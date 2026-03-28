@@ -5,6 +5,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.mina.moonchat.models.ChatItem
 import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ChatPagingSource(
     private val userId: String
@@ -30,13 +33,15 @@ class ChatPagingSource(
             }
 
             val chats = snapshot.documents.mapNotNull { document ->
+                val timestamp = document.getTimestamp("date")?.toDate()
                 ChatItem(
                     chatId = document.id,
+                    recipientId = document.getString("recipientId") ?: return@mapNotNull null,
                     username = document.getString("recipientName") ?: "Unknown",
-                    lastMessage = document.getString("text") ?: "",
-                    time = document.getTimestamp("date")?.toDate()?.time.toString(),
+                    lastMessage = document.getString("lastMessage") ?: "",
+                    time = timestamp?.let(::formatChatTime).orEmpty(),
                     onlineState = document.getBoolean("isOnline") ?: false,
-                    profileImg = document.getString("pfp") ?: ""
+                    profileImg = document.getString("profileImg") ?: ""
                 )
             }
 
@@ -47,7 +52,12 @@ class ChatPagingSource(
                 nextKey = nextQuery
             )
         } catch (e: Exception) {
+            Log.e("ChatPagingSource", "Failed to load chats", e)
             LoadResult.Error(e) // Handle error
         }
+    }
+
+    private fun formatChatTime(date: Date): String {
+        return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(date)
     }
 }

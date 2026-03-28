@@ -300,8 +300,10 @@ class ServerSide {
                 }
 
                 val chatList = snapshots?.documents?.mapNotNull { document ->
+                    val recipientId = document.getString("recipientId") ?: return@mapNotNull null
                     ChatItem(
                         chatId = document.id,
+                        recipientId = recipientId,
                         username = document.getString("recipientName") ?: "Unknown",
                         lastMessage = document.getString("lastMessage") ?: "",
                         time = document.getTimestamp("date")?.toDate()?.time.toString(),
@@ -317,17 +319,31 @@ class ServerSide {
     /**
      * Update or create chat channel metadata
      */
-    fun updateChatChannel(
-        userId: String,
+    fun updateChatChannels(
+        senderId: String,
+        senderName: String,
+        senderProfileImg: String?,
         recipientId: String,
         recipientName: String,
+        recipientProfileImg: String?,
         lastMessage: String,
         timestamp: Long = System.currentTimeMillis()
     ) {
-        val channelId = getChatChannelId(userId, recipientId)
-        val channelData = hashMapOf(
+        val channelId = getChatChannelId(senderId, recipientId)
+
+        val senderChannelData = hashMapOf(
             "recipientId" to recipientId,
             "recipientName" to recipientName,
+            "profileImg" to recipientProfileImg,
+            "lastMessage" to lastMessage,
+            "date" to Date(timestamp),
+            "isOnline" to false
+        )
+
+        val recipientChannelData = hashMapOf(
+            "recipientId" to senderId,
+            "recipientName" to senderName,
+            "profileImg" to senderProfileImg,
             "lastMessage" to lastMessage,
             "date" to Date(timestamp),
             "isOnline" to false
@@ -335,9 +351,16 @@ class ServerSide {
 
         firestore
             .collection("Users")
-            .document(userId)
+            .document(senderId)
             .collection("chat channel")
             .document(channelId)
-            .set(channelData)
+            .set(senderChannelData)
+
+        firestore
+            .collection("Users")
+            .document(recipientId)
+            .collection("chat channel")
+            .document(channelId)
+            .set(recipientChannelData)
     }
 }

@@ -5,22 +5,17 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import androidx.paging.ExperimentalPagingApi
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import androidx.paging.map
 import com.mina.moonchat.application.MoonChat
 import com.mina.moonchat.base.BaseViewModel
-import com.mina.moonchat.data.dto.toTextMessage
-import com.mina.moonchat.data.server.ChatRemoteMediator
-import com.mina.moonchat.data.server.ServerSide
 import com.mina.moonchat.data.server.UserLocalRepository
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.models.User
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.Date
 
@@ -34,10 +29,16 @@ class ChatViewModel(app: Application) : BaseViewModel(
     }
 
     private val repository: UserLocalRepository = (app as MoonChat).repo
+    private val presenceRef: DatabaseReference by lazy {
+        FirebaseDatabase.getInstance().getReference("Users states")
+    }
+    private var recipientPresenceListener: ValueEventListener? = null
 
     // UI State
     val textMessage = MutableLiveData<String>()
     val username = MutableLiveData<String>()
+    val onlineStatus = MutableLiveData<String>()
+    val profilePicture = MutableLiveData<String>()
 
     // Error state
     private val _errorMessage = MutableLiveData<String?>()
@@ -74,6 +75,33 @@ class ChatViewModel(app: Application) : BaseViewModel(
                 repository.stopRealtimeSync(currentUserId, recipientId)
             }
         }
+        stopObservingRecipientPresence()
+    }
+
+    fun observeRecipientPresence(recipientId: String) {
+        stopObservingRecipientPresence()
+
+        recipientPresenceListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                val state = snapshot.child("state").getValue(String::class.java)
+                    ?: snapshot.getValue(String::class.java)
+                    ?: "Offline"
+                onlineStatus.postValue(state)
+            }
+
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+                Log.e(TAG, "Failed to observe recipient presence: ${error.message}")
+            }
+        }
+
+        presenceRef.child(recipientId).addValueEventListener(recipientPresenceListener!!)
+    }
+
+    private fun stopObservingRecipientPresence() {
+        val recipientId = currentRecipientId ?: return
+        val listener = recipientPresenceListener ?: return
+        presenceRef.child(recipientId).removeEventListener(listener)
+        recipientPresenceListener = null
     }
 
     /**
@@ -105,7 +133,11 @@ class ChatViewModel(app: Application) : BaseViewModel(
 
             viewModelScope.launch {
                 try {
-                    repository.sendMessage(newMessage)
+                    repository.sendMessage(
+                        newMessage,
+                        currentUser.profileImg,
+                        recipientUser.profileImg
+                    )
                     Log.d("TAG", "Message sent successfully")
                     textMessage.value = "" // Clear input
                 } catch (e: Exception) {

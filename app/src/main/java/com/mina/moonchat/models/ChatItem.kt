@@ -2,6 +2,7 @@ package com.mina.moonchat.models
 
 data class ChatItem(
     val chatId: String,
+    val recipientId: String,
     val username: String,
     val profileImg: String?,
     val onlineState: Boolean,

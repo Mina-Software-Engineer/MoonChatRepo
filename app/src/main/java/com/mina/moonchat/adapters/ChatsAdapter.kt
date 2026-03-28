@@ -1,5 +1,6 @@
 package com.mina.moonchat.adapters
 
+import android.view.View
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.paging.PagingDataAdapter
@@ -10,17 +11,19 @@ import com.mina.moonchat.R
 import com.mina.moonchat.databinding.ChatListItemBinding
 import com.mina.moonchat.models.ChatItem
 
-class ChatsAdapter : PagingDataAdapter<ChatItem, RecyclerView.ViewHolder>(COMPARATOR) {
+class ChatsAdapter(
+    private val onChatClicked: (ChatItem) -> Unit
+) : PagingDataAdapter<ChatItem, RecyclerView.ViewHolder>(COMPARATOR) {
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val chatItem = getItem(position)
         if (chatItem != null) {
-            (holder as ChatsViewHolder).bind(chatItem as ChatItem)
+            (holder as ChatsViewHolder).bind(chatItem)
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-        return ChatsViewHolder.create(parent)
+        return ChatsViewHolder.create(parent, onChatClicked)
     }
 
     companion object {
@@ -35,15 +38,18 @@ class ChatsAdapter : PagingDataAdapter<ChatItem, RecyclerView.ViewHolder>(COMPAR
 }
 
 
-class ChatsViewHolder(private var binding: ChatListItemBinding) :
+class ChatsViewHolder(
+    private var binding: ChatListItemBinding,
+    private val onChatClicked: (ChatItem) -> Unit
+) :
     RecyclerView.ViewHolder(binding.root) {
 
     companion object {
-        fun create(view: ViewGroup): ChatsViewHolder {
+        fun create(view: ViewGroup, onChatClicked: (ChatItem) -> Unit): ChatsViewHolder {
 
             val inflater = LayoutInflater.from(view.context)
             val binding = ChatListItemBinding.inflate(inflater, view, false)
-            return ChatsViewHolder(binding)
+            return ChatsViewHolder(binding, onChatClicked)
         }
     }
 
@@ -61,7 +67,10 @@ class ChatsViewHolder(private var binding: ChatListItemBinding) :
 
         binding.itemNameTextView.text = user.username
         binding.itemTimeTextView.text = user.time
-        //binding.itemStatusTextView.text = if (user.onlineState) "Online" else "Offline"
         binding.itemLastMessageTextView.text = user.lastMessage
+        binding.onlineIndicator.visibility = if (user.onlineState) View.VISIBLE else View.INVISIBLE
+        binding.root.setOnClickListener {
+            onChatClicked(user)
+        }
     }
 }

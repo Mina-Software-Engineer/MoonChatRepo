@@ -346,8 +346,10 @@ class ServerSide1 {
                 }
 
                 val chatList = snapshots?.documents?.mapNotNull { document ->
+                    val recipientId = document.getString("recipientId") ?: return@mapNotNull null
                     ChatItem(
                         chatId = document.id,
+                        recipientId = recipientId,
                         username = document.getString("recipientName") ?: "Unknown",
                         lastMessage = document.getString("lastMessage") ?: "",
                         time = document.getTimestamp("date")?.toDate()?.time.toString(),

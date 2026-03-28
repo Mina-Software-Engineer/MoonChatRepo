@@ -1,6 +1,7 @@
 package com.mina.moonchat.viewmodels
 
 import android.app.Application
+import android.util.Log
 import android.util.Patterns
 import android.widget.Toast
 import com.google.firebase.firestore.FirebaseFirestore
@@ -81,9 +82,11 @@ class SignUpViewModel(app: Application): BaseViewModel(
                     "#$name$randomNum")
                 currentUserDocRef.set(newUser)
                 addUserToDB()
-
+                Log.d("cheklas", "user: ${newUser.displayName}")
                 Toast.makeText(app.applicationContext, "Account was created successfully!", Toast.LENGTH_LONG).show()
                 //Log.d("check", "Document id = ${newUser.userId}")
+            }else{
+                Toast.makeText(app.applicationContext, it.exception.toString(), Toast.LENGTH_LONG).show()
             }
         }
     }

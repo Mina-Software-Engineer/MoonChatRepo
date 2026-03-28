@@ -11,14 +11,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.paging.LoadState
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.google.firebase.auth.FirebaseAuth
+import com.mina.moonchat.R
 import com.mina.moonchat.adapters.MessageAdapter
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentChatBinding
 import com.mina.moonchat.models.User
 import com.mina.moonchat.viewmodels.ChatViewModel
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -55,6 +57,14 @@ class ChatFragment : BaseFragment() {
 
         val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
         _viewModel.username.value = recipientUser.displayName
+        _viewModel.onlineStatus.value = recipientUser.onlineState
+        _viewModel.observeRecipientPresence(recipientUser.userId)
+        Glide.with(binding.root)
+            .load(recipientUser.profileImg)
+            .placeholder(R.drawable.ic_account_circle)
+            .error(R.drawable.ic_account_circle)
+            .into(binding.chatPfpImageView)
+
 
         setupRecyclerView()
         setupObservers()
@@ -93,6 +103,7 @@ class ChatFragment : BaseFragment() {
                         binding.progressBar.isVisible = true
                         binding.chatRecyclerView.isVisible = false
                     }
+
                     is LoadState.NotLoading -> {
                         binding.progressBar.isVisible = false
                         binding.chatRecyclerView.isVisible = true
@@ -103,6 +114,7 @@ class ChatFragment : BaseFragment() {
                             shouldScrollToBottom = false
                         }
                     }
+
                     is LoadState.Error -> {
                         binding.progressBar.isVisible = false
                         binding.chatRecyclerView.isVisible = true

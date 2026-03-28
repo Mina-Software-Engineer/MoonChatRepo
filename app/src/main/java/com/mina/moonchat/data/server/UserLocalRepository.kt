@@ -178,7 +178,11 @@ class UserLocalRepository(
     /**
      * Send message with optimistic UI update
      */
-    suspend fun sendMessage(message: TextMessage) {
+    suspend fun sendMessage(
+        message: TextMessage,
+        senderProfileImg: String?,
+        recipientProfileImg: String?
+    ) {
         val channelId = getChannelId(message.senderId, message.recipientId)
         val messageId = message.id.takeIf { it.isNotBlank() } ?: server.createMessageId()
             ?: throw IllegalStateException("Failed to generate message ID")
@@ -205,10 +209,13 @@ class UserLocalRepository(
                     Log.d("TAG", "Pending message marked as sent: $firebaseId")
 
                     // Update chat channel metadata
-                    server.updateChatChannel(
-                        userId = pendingMessage.senderId,
+                    server.updateChatChannels(
+                        senderId = pendingMessage.senderId,
+                        senderName = pendingMessage.senderName,
+                        senderProfileImg = senderProfileImg,
                         recipientId = pendingMessage.recipientId,
                         recipientName = pendingMessage.recipientName,
+                        recipientProfileImg = recipientProfileImg,
                         lastMessage = pendingMessage.text
                     )
                 }
@@ -228,7 +235,7 @@ class UserLocalRepository(
     suspend fun retryMessage(message: TextMessage) {
         msgDao.deleteMessageById(message.id)
 
-        sendMessage(message.copy(status = "PENDING"))
+        sendMessage(message.copy(status = "PENDING"), null, null)
     }
 
     /**
