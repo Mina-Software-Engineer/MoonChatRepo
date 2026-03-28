@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <data>
+
+        <variable
+            name="message"
+            type="com.mina.moonchat.models.TextMessage" />
+    </data>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+
+        <TextView
+            android:id="@+id/text_view_message"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/recipient_item_background"
+            android:elevation="5dp"
+            android:fontFamily="@font/comic_neue_regular"
+            android:padding="12dp"
+            android:text="@{message.text}"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_percent="0.75"
+            tools:text="Hi Mina, How are you?" />
+
+
+        <TextView
+            android:id="@+id/text_view_time"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/gray"
+            android:textSize="13sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/text_view_message"
+            app:timeTextConvert="@{message.date}"
+            tools:text="12:12 AM" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</layout>

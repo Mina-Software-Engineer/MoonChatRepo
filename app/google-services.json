@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "163820076622",
+    "project_id": "moon-chat-d7d85",
+    "storage_bucket": "moon-chat-d7d85.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:163820076622:android:5a19d8af2f2fef81600d1f",
+        "android_client_info": {
+          "package_name": "com.mina.moonchat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "163820076622-r8lhjvnai4k6b4pbp92jr2bs67kf3ag3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAv9AgEafAtTVr461zFkFsSKMhYFeYzq5w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "163820076622-r8lhjvnai4k6b4pbp92jr2bs67kf3ag3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
