@@ -22,7 +22,7 @@
             android:elevation="5dp"
             android:fontFamily="@font/comic_neue_regular"
             android:padding="12dp"
-            android:textColor="@color/black"
+            android:textColor="@color/white"
             android:textSize="15sp"
             android:text="@{message.text}"
             app:layout_constraintEnd_toEndOf="parent"

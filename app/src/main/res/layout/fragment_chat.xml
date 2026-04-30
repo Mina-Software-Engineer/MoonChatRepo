@@ -15,7 +15,7 @@
         android:id="@+id/chat_page"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/chat_toolbar_color"
+        android:background="@drawable/chat_background"
         tools:context=".ui.fragments.ChatFragment">
 
         <androidx.appcompat.widget.Toolbar
@@ -89,7 +89,7 @@
             android:paddingTop="5dp"
             android:scrollbars="vertical"
             android:paddingHorizontal="10dp"
-            android:background="@drawable/chat_background"
+
             android:layout_above="@id/send_message_container"
             android:layout_below="@id/chat_toolbar"
             tools:listitem="@layout/sender_item_text_message" />
@@ -109,7 +109,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_alignParentBottom="true"
-            android:background="@color/chat_toolbar_color"
             android:paddingBottom="5dp">
 
 
@@ -129,14 +128,13 @@
                 android:layout_marginStart="20dp"
                 android:layout_alignParentTop="true"
                 android:layout_toStartOf="@+id/send_btn"
-                android:backgroundTint="@color/txtBox_bg"
                 app:cardCornerRadius="25dp">
 
 
                 <RelativeLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@color/chat_bg_color">
+                    android:background="#57FFFFFF">
 
                     <ImageView
                         android:id="@+id/emoji_btn"

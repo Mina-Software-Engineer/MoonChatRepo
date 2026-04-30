@@ -15,12 +15,12 @@
     <color name="statusBar_color">#142232</color>
     <color name="background_color_sign_up">#2E2E30</color>
     <color name="login_bg">#1c2120</color>
-    <color name="chat_bg_color">#191b1d</color>
+    <color name="chat_bg_color">#214691</color>
     <color name="btn_login">#feb06a</color>
     <color name="chat_toolbar_color">#3e4858</color>
 
 
-    <color name="chat_list_background_color">#F0FDF4</color>
+    <color name="chat_list_background_color">#000606</color>
 
     <!-- Primary Brand Colors - Slightly brighter for dark mode -->
     <color name="primary">#10B981</color>
@@ -50,7 +50,7 @@
     <color name="nav_unselected">#64748B</color>
 
     <!-- Chat List Item Colors -->
-    <color name="chat_list_username_color">#1F2937</color>
+    <color name="chat_list_username_color">#FFFFFF</color>
     <color name="chat_list_last_message_color">#6B7280</color>
     <color name="chat_list_time_color">#9CA3AF</color>
 

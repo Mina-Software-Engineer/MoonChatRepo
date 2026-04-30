@@ -45,7 +45,12 @@ object CloudinaryImageUploader {
         try {
             DataOutputStream(connection.outputStream).use { output ->
                 writeTextPart(output, boundary, "upload_preset", uploadPreset)
-                writeTextPart(output, boundary, "public_id", "${userId}_profile")
+                writeTextPart(
+                    output,
+                    boundary,
+                    "public_id",
+                    "${userId}_profile_${System.currentTimeMillis()}"
+                )
                 writeTextPart(output, boundary, "folder", "moonchat/profile_images")
                 writeFilePart(
                     output = output,

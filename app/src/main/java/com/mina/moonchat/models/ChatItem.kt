@@ -7,5 +7,6 @@ data class ChatItem(
     val profileImg: String?,
     val onlineState: Boolean,
     val time: String,
-    val lastMessage: String
+    val lastMessage: String,
+    val hasUnreadIncoming: Boolean = false
 )
