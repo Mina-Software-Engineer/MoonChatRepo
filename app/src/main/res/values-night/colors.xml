@@ -19,7 +19,7 @@
 
     <!-- Status Colors - Brighter variants -->
     <color name="online_indicator">#34D399</color>
-    <color name="error">#F87171</color>
+    <color name="error">#E60D0D</color>
     <color name="error_surface">#450A0A</color>
     <color name="divider">#1E293B</color>
 

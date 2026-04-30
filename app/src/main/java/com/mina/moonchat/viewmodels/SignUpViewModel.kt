@@ -68,8 +68,8 @@ class SignUpViewModel(app: Application): BaseViewModel(
 
     private fun createNewAccount(name: String, email: String, password: String){
 
-        mAuth.createUserWithEmailAndPassword(email, password).addOnCompleteListener {
-            if (it.isSuccessful){
+        mAuth.createUserWithEmailAndPassword(email, password).addOnSuccessListener {
+
                 val randomNum = Random(System.nanoTime()).nextInt(9999 - 1)
                 val newUser = User(
                     mAuth.currentUser!!.uid,
@@ -85,9 +85,7 @@ class SignUpViewModel(app: Application): BaseViewModel(
                 Log.d("cheklas", "user: ${newUser.displayName}")
                 Toast.makeText(app.applicationContext, "Account was created successfully!", Toast.LENGTH_LONG).show()
                 //Log.d("check", "Document id = ${newUser.userId}")
-            }else{
-                Toast.makeText(app.applicationContext, it.exception.toString(), Toast.LENGTH_LONG).show()
-            }
+
         }
     }
 }

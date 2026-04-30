@@ -29,20 +29,30 @@ class LoginViewModel(app: Application) : BaseViewModel(
         progressBar.value = true
         mAuth.signInWithEmailAndPassword(email, password).addOnCompleteListener{ task ->
             if (task.isSuccessful){
+                ensureCurrentUserDocument { user ->
+                    if (user == null) {
+                        progressBar.value = false
+                        Toast.makeText(
+                            app.applicationContext,
+                            "There was an error restoring your profile",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@ensureCurrentUserDocument
+                    }
 
-                FirebaseMessaging.getInstance().token.addOnCompleteListener {
-                    val token: String? = it.result
-                    firestore.collection("Users").document(mAuth.currentUser!!.uid)
-                        .update(mapOf("token" to token))
-                    addUserToDB()
+                    FirebaseMessaging.getInstance().token.addOnCompleteListener {
+                        val token: String? = it.result
+                        firestore.collection("Users").document(mAuth.currentUser!!.uid)
+                            .update(mapOf("token" to token))
+                        addUserToDB()
+                    }
+
+                    progressBar.value = false
+                    val intentToMain = Intent(app.applicationContext, MainActivity::class.java)
+                    intentToMain.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    app.startActivity(intentToMain)
                 }
-                //progress_login.visibility = View.INVISIBLE
-                progressBar.value = false
-                val intentToMain = Intent(app.applicationContext, MainActivity::class.java)
-                intentToMain.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)// you can type finish() instead to  end this screen
-                app.startActivity(intentToMain)
             }else{
-                //progress_login.visibility = View.INVISIBLE
                 progressBar.value = false
                 Toast.makeText(app.applicationContext, task.exception?.message, Toast.LENGTH_LONG).show()
             }

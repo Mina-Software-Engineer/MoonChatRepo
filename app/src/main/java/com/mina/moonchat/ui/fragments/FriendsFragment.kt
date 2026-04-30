@@ -94,7 +94,7 @@ class FriendsFragment : BaseFragment() {
         mList.clear()
         query.get().addOnSuccessListener {
             it.documents.forEach { document ->
-                mList.add(document.toObject(User::class.java)!!)
+                document.toObject(User::class.java)?.let(mList::add)
             }
             rvAdapter.submitList(mList.toList())
         }

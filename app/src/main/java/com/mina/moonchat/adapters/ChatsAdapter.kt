@@ -68,7 +68,10 @@ class ChatsViewHolder(
         binding.itemNameTextView.text = user.username
         binding.itemTimeTextView.text = user.time
         binding.itemLastMessageTextView.text = user.lastMessage
-        binding.onlineIndicator.visibility = if (user.onlineState) View.VISIBLE else View.INVISIBLE
+        binding.onlineIndicator.visibility = View.VISIBLE
+        binding.onlineIndicator.setBackgroundResource(
+            if (user.onlineState) R.drawable.online_indicator else R.drawable.offline_indicator
+        )
         binding.root.setOnClickListener {
             onChatClicked(user)
         }

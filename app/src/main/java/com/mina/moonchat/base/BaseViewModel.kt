@@ -6,6 +6,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
@@ -16,6 +17,7 @@ import com.mina.moonchat.data.server.UserLocalRepository
 import com.mina.moonchat.models.User
 import com.mina.moonchat.utils.SingleLiveEvent
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /**
  * Base class for View Models to declare the common LiveData objects in one place
@@ -92,12 +94,53 @@ abstract class BaseViewModel(
         }
     }
 
-    //getting current user info from the server
-    fun getCurrentUserInfo(onComplete: (User) -> Unit) {
-        currentUserDocRef.get().addOnSuccessListener {
-            onComplete(it.toObject(User::class.java)!!)
+    fun ensureCurrentUserDocument(
+        authUser: FirebaseUser? = mAuth.currentUser,
+        onComplete: (User?) -> Unit = {}
+    ) {
+        val firebaseUser = authUser ?: run {
+            onComplete(null)
+            return
         }
 
+        currentUserDocRef.get()
+            .addOnSuccessListener { snapshot ->
+                val existingUser = snapshot.toObject(User::class.java)
+                if (snapshot.exists() && existingUser != null) {
+                    onComplete(existingUser)
+                    return@addOnSuccessListener
+                }
+
+                val displayName = firebaseUser.displayName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: firebaseUser.email?.substringBefore("@")
+                    ?: "MoonChat User"
+                val randomNum = Random(System.nanoTime()).nextInt(1000, 9999)
+                val recoveredUser = User(
+                    userId = firebaseUser.uid,
+                    displayName = displayName,
+                    email = firebaseUser.email.orEmpty(),
+                    password = "",
+                    profileImg = null,
+                    onlineState = "Offline",
+                    bio = "",
+                    id = "#${displayName.replace(" ", "")}$randomNum"
+                )
+
+                currentUserDocRef.set(recoveredUser)
+                    .addOnSuccessListener { onComplete(recoveredUser) }
+                    .addOnFailureListener { onComplete(null) }
+            }
+            .addOnFailureListener {
+                onComplete(null)
+            }
+    }
+
+    //getting current user info from the server
+    fun getCurrentUserInfo(onComplete: (User) -> Unit) {
+        ensureCurrentUserDocument { user ->
+            user?.let(onComplete)
+        }
     }
 
 }

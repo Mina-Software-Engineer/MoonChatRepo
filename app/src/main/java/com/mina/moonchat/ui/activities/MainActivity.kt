@@ -119,7 +119,10 @@ class MainActivity : AppCompatActivity() {
 
                 userPresenceRef.onDisconnect().setValue(offlineState)
                 userPresenceRef.setValue(onlineState)
-                firestore.document("Users/$currentUserId").update("onlineState", "Online")
+                firestore.document("Users/$currentUserId").set(
+                    mapOf("onlineState" to "Online"),
+                    com.google.firebase.firestore.SetOptions.merge()
+                )
             }
 
             override fun onCancelled(error: com.google.firebase.database.DatabaseError) = Unit
@@ -136,6 +139,9 @@ class MainActivity : AppCompatActivity() {
         )
 
         presenceRootRef.child(currentUserId).setValue(presenceState)
-        firestore.document("Users/$currentUserId").update("onlineState", state)
+        firestore.document("Users/$currentUserId").set(
+            mapOf("onlineState" to state),
+            com.google.firebase.firestore.SetOptions.merge()
+        )
     }
 }
