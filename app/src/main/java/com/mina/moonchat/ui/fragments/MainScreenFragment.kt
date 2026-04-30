@@ -41,7 +41,7 @@ class MainScreenFragment : Fragment() {
         val tabLayout = binding.tabLayout
         val viewPager = binding.viewPager2
 
-        adapter = ViewPagerAdapter(requireActivity().supportFragmentManager, lifecycle)
+        adapter = ViewPagerAdapter(this)
 
         tabLayout.addTab(tabLayout.newTab().setText("Chats"))
         tabLayout.addTab(tabLayout.newTab().setText("Friends"))

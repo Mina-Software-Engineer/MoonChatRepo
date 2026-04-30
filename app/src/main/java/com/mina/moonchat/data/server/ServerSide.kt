@@ -14,6 +14,7 @@ import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.mina.moonchat.models.ChatItem
 import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.models.longToDate
@@ -336,6 +337,8 @@ class ServerSide {
             "recipientName" to recipientName,
             "profileImg" to recipientProfileImg,
             "lastMessage" to lastMessage,
+            "lastMessageSenderId" to senderId,
+            "lastMessageRead" to false,
             "date" to Date(timestamp),
             "isOnline" to false
         )
@@ -345,6 +348,8 @@ class ServerSide {
             "recipientName" to senderName,
             "profileImg" to senderProfileImg,
             "lastMessage" to lastMessage,
+            "lastMessageSenderId" to senderId,
+            "lastMessageRead" to false,
             "date" to Date(timestamp),
             "isOnline" to false
         )
@@ -354,13 +359,39 @@ class ServerSide {
             .document(senderId)
             .collection("chat channel")
             .document(channelId)
-            .set(senderChannelData)
+            .set(senderChannelData, SetOptions.merge())
 
         firestore
             .collection("Users")
             .document(recipientId)
             .collection("chat channel")
             .document(channelId)
-            .set(recipientChannelData)
+            .set(recipientChannelData, SetOptions.merge())
+    }
+
+    fun updateOwnChatChannel(
+        ownerUserId: String,
+        otherUserId: String,
+        otherUserName: String,
+        lastMessage: String,
+        lastMessageSenderId: String,
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        val channelId = getChatChannelId(ownerUserId, otherUserId)
+        val channelData = hashMapOf(
+            "recipientId" to otherUserId,
+            "recipientName" to otherUserName,
+            "lastMessage" to lastMessage,
+            "lastMessageSenderId" to lastMessageSenderId,
+            "lastMessageRead" to false,
+            "date" to Date(timestamp)
+        )
+
+        firestore
+            .collection("Users")
+            .document(ownerUserId)
+            .collection("chat channel")
+            .document(channelId)
+            .set(channelData, SetOptions.merge())
     }
 }

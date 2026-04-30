@@ -14,6 +14,7 @@ import com.mina.moonchat.adapters.ChatsAdapter
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentChatListBinding
 import com.mina.moonchat.viewmodels.ChatListViewModel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -48,8 +49,8 @@ class ChatListFragment : BaseFragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                _viewModel.chatItems.collect { chats ->
-                    chatsAdapter.submitList(chats)
+                _viewModel.chatItems.collectLatest { chats ->
+                    chatsAdapter.submitList(chats.toList())
                 }
             }
         }

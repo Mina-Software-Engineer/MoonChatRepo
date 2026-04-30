@@ -8,8 +8,8 @@
 
     <!-- Background Colors - Deep Slate -->
     <color name="background">#020617</color>
-    <color name="surface">#0F172A</color>
-    <color name="surface_variant">#1E293B</color>
+    <color name="surface">#000000</color>
+    <color name="surface_variant">#000000</color>
 
     <!-- Text Colors - High contrast on dark -->
     <color name="text_primary">#F8FAFC</color>

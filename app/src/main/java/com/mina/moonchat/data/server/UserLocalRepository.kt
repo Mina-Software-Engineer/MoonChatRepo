@@ -167,6 +167,14 @@ class UserLocalRepository(
                     )
 
                     msgDao.insertMessage(messageDTO)
+                    server.updateOwnChatChannel(
+                        ownerUserId = currentUserId,
+                        otherUserId = message.senderId,
+                        otherUserName = message.senderName,
+                        lastMessage = message.text,
+                        lastMessageSenderId = message.senderId,
+                        timestamp = message.date.time
+                    )
                     Log.d("TAG", "New message saved: ${message.id}, status: $status")
                 }
             } catch (e: Exception) {
