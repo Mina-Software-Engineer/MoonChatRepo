@@ -78,7 +78,10 @@ data class MessagesDTO(
     val status: MessageStatus = MessageStatus.SENT, // Track message state
 
     @ColumnInfo(name = "is_read")
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+
+    @ColumnInfo(name = "is_delivered")
+    val isDelivered: Boolean = false
 )
 
 enum class MessageStatus {
@@ -102,7 +105,8 @@ fun MessagesDTO.toTextMessage(): TextMessage {
         type = this.messageType,
         channelId = this.channelID,
         status = this.status.name,
-        isRead = this.isRead
+        isRead = this.isRead,
+        isDelivered = this.isDelivered
     )
 }
 
@@ -119,6 +123,7 @@ fun TextMessage.toMessagesDTO(status: MessageStatus = MessageStatus.SENT): Messa
         channelID = this.channelId,
         messageType = this.type,
         status = status,
-        isRead = this.isRead
+        isRead = this.isRead,
+        isDelivered = this.isDelivered
     )
 }

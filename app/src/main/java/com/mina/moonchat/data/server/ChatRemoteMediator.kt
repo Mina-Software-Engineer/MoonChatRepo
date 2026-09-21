@@ -94,7 +94,8 @@ class ChatRemoteMediator(
                         channelID = channelId,
                         messageType = msg.type,
                         status = if (msg.senderId == currentUserId) MessageStatus.SYNCED else MessageStatus.RECEIVED,
-                        isRead = msg.isRead
+                        isRead = msg.isRead,
+                        isDelivered = msg.isDelivered
                     )
                 }
 

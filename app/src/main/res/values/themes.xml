@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.WhatsChat" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.MoonChat" parent="Theme.MaterialComponents.Light.NoActionBar">
         <!-- Brand Colors -->
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_variant</item>
@@ -27,6 +27,11 @@
     <style name="CircleImageView" parent="">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="splashScreenTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_img</item>
+        <item name="android:statusBarColor">@color/login_bg</item>
     </style>
 
 </resources>

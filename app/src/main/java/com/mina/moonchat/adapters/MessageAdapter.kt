@@ -13,6 +13,9 @@ import com.mina.moonchat.R
 import com.mina.moonchat.databinding.RecipientItemTextMessageBinding
 import com.mina.moonchat.databinding.SenderItemTextMessageBinding
 import com.mina.moonchat.models.TextMessage
+import android.graphics.Color
+import com.mina.moonchat.models.MessageDeliveryState
+//import com.mina.moonchat.models.resolveDeliveryState
 
 class MessageAdapter(private val currentUserId: String) :
     PagingDataAdapter<TextMessage, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
@@ -70,26 +73,26 @@ class MessageAdapter(private val currentUserId: String) :
             binding.apply {
                 this.message = message
 
-                // Show status indicator based on message state
-                when {
-                    message.isPending() -> {
-                        // Show pending indicator (e.g., clock icon)
-                        //statusIcon.visibility = View.VISIBLE
-                        //statusIcon.setImageResource(android.R.drawable.ic_menu_recent_history)
-                    }
-                    message.isFailed() -> {
-                        // Show failed indicator (e.g., error icon)
-                        //statusIcon.visibility = View.VISIBLE
-                        //statusIcon.setImageResource(android.R.drawable.ic_dialog_alert)
-                        // Make clickable to retry
-                        root.setOnClickListener {
-                            onMessageClickListener?.onMessageClick(message)
+                val state = message.resolveDeliveryState()
+                imageViewStatus.apply {
+                    visibility = View.VISIBLE
+                    setImageResource(
+                        when (state) {
+                            MessageDeliveryState.PENDING -> R.drawable.ic_pending
+                            MessageDeliveryState.SEEN -> R.drawable.ic_double_tick_seen
+                            MessageDeliveryState.DELIVERED -> R.drawable.ic_double_tick
+                            MessageDeliveryState.FAILED -> R.drawable.ic_failed
+                            else -> R.drawable.ic_tick
                         }
-                    }
-                    else -> {
-                        // Message sent successfully - hide or show checkmark
-                        //statusIcon.visibility = View.GONE
-                    }
+                    )
+
+                    setColorFilter(
+                        when (state) {
+                            MessageDeliveryState.SEEN -> Color.parseColor("#93C5FD")
+                            MessageDeliveryState.FAILED -> Color.parseColor("#FCA5A5")
+                            else -> Color.GRAY
+                        }
+                    )
                 }
 
                 executePendingBindings()
@@ -109,6 +112,19 @@ class MessageAdapter(private val currentUserId: String) :
                 this.message = message
                 executePendingBindings()
             }
+        }
+    }
+
+    override fun onViewAttachedToWindow(holder: RecyclerView.ViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        // Only animate if it's the very first item (position 0) in the reverse layout
+        // and if it's relatively "fresh" (to avoid re-animating on scroll)
+        if (holder.absoluteAdapterPosition == 0) {
+            val animation = android.view.animation.AnimationUtils.loadAnimation(
+                holder.itemView.context,
+                R.anim.message_popup
+            )
+            holder.itemView.startAnimation(animation)
         }
     }
 

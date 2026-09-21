@@ -1,49 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout>
 
-        <data>
+    <data>
 
-                <variable
-                    name="message"
-                    type="com.mina.moonchat.models.TextMessage" />
-        </data>
+        <variable
+            name="message"
+            type="com.mina.moonchat.models.TextMessage" />
+    </data>
 
     <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
         xmlns:app="http://schemas.android.com/apk/res-auto"
         xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp">
 
-        <TextView
-            android:id="@+id/text_view_message"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:id="@+id/layout_bubble"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/send_message_background"
-            android:elevation="5dp"
-            android:fontFamily="@font/comic_neue_regular"
-            android:padding="12dp"
-            android:textColor="@color/white"
-            android:textSize="15sp"
-            android:text="@{message.text}"
+            android:orientation="vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintWidth_percent="0.7"
-            tools:text="Hi Mina, How are you?" />
+            app:layout_constraintWidth_default="wrap"
 
-        <TextView
-            android:id="@+id/text_view_time"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="7dp"
-            android:textColor="@color/white"
-            android:textSize="11sp"
-            app:timeTextConvert="@{message.date}"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_view_message"
-            tools:text="12:12 Am"
-            tools:textColor="@color/gray"/>
+            app:layout_constraintWidth_percent="0.75">
+
+            <TextView
+                android:id="@+id/text_view_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:elevation="5dp"
+                android:fontFamily="@font/comic_neue_regular"
+                android:paddingStart="10dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="5dp"
+                android:text="@{message.text}"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                tools:text="Hi Mina, How are you?" />
+
+            <LinearLayout
+                android:id="@+id/layout_time_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="10dp">
+
+                <TextView
+                    android:id="@+id/text_view_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/gray"
+                    android:textSize="11sp"
+                    app:timeTextConvert="@{message.date}"
+                    tools:text="12:12 Am" />
+
+                <ImageView
+                    android:id="@+id/image_view_status"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="6dp"
+                    android:scaleType="centerInside"
+                    android:visibility="visible"
+                    tools:src="@drawable/ic_double_tick_seen" />
+            </LinearLayout>
+        </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

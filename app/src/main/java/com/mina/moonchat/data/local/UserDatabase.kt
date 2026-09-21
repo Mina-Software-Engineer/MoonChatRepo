@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import com.mina.moonchat.data.dto.AuthUserDTO
 import com.mina.moonchat.data.dto.MessagesDTO
 import com.mina.moonchat.data.dto.UserInfoDTO
@@ -11,7 +12,8 @@ import com.mina.moonchat.data.dto.UserInfoDTO
 
 private const val DATABASE_NAME = "asteroids_database"
 
-@Database(entities = [UserInfoDTO::class, AuthUserDTO::class, MessagesDTO::class], version = 1, exportSchema = false)
+@Database(entities = [UserInfoDTO::class, AuthUserDTO::class, MessagesDTO::class], version = 2, exportSchema = false)
+@TypeConverters(Converters::class)
 abstract class UserDatabase: RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun authDao(): AuthDao
@@ -32,7 +34,9 @@ abstract class UserDatabase: RoomDatabase() {
                     context.applicationContext,
                     UserDatabase::class.java,
                     DATABASE_NAME
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
 
                 INSTANCE = instance
                 // return instance

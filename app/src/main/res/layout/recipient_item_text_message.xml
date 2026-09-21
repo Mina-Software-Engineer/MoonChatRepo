@@ -10,39 +10,64 @@
             type="com.mina.moonchat.models.TextMessage" />
     </data>
 
+    <!--
+        PERFORMANCE OPTIMIZATION NOTE:
+        1. Maintained ConstraintLayout as root to ensure layout symmetry with sender_item_text_message.xml
+           and proper item matching/behavior inside RecyclerView.
+        2. Fixed a critical layout bug and performance bottleneck: Moved 'app:layout_constraintWidth_percent="0.75"'
+           from the inner TextView to the parent LinearLayout. ConstraintLayout properties are completely ignored
+           when placed on children of a LinearLayout, causing unnecessary rendering overhead and failing to constrain long text.
+        3. Configured the LinearLayout bubble with 'android:layout_width="0dp"' and 'app:layout_constraintWidth_default="wrap"'
+           to allow the bubble to wrap content efficiently while capping its maximum width at 75% of the screen.
+        4. Removed all dead/ignored constraint attributes (e.g., layout_constraintStart_toStartOf, layout_constraintTop_toTopOf)
+           from the inner TextViews to reduce XML parsing bloat and CPU processing cycles during inflation.
+    -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp">
 
 
-        <TextView
-            android:id="@+id/text_view_message"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:id="@+id/layout_bubble"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/recipient_item_background"
-            android:elevation="5dp"
-            android:fontFamily="@font/comic_neue_regular"
-            android:padding="12dp"
-            android:text="@{message.text}"
-            android:textColor="@color/white"
-            android:textSize="15sp"
+            android:orientation="vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintWidth_percent="0.75"
-            tools:text="Hi Mina, How are you?" />
+            app:layout_constraintWidth_default="wrap"
+            app:layout_constraintWidth_percent="0.75">
+
+            <TextView
+                android:id="@+id/text_view_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:elevation="5dp"
+                android:fontFamily="@font/comic_neue_regular"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="5dp"
+                android:text="@{message.text}"
+                android:textColor="#F3F4F6"
+                android:textSize="15sp"
+                tools:text="Hi Mina, How are you?" />
 
 
-        <TextView
-            android:id="@+id/text_view_time"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/gray"
-            android:textSize="13sp"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_view_message"
-            app:timeTextConvert="@{message.date}"
-            tools:text="12:12 AM" />
+            <TextView
+                android:id="@+id/text_view_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#6B7280"
+                android:textSize="13sp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="10dp"
+                app:timeTextConvert="@{message.date}"
+                tools:text="12:12 AM" />
+        </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>

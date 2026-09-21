@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
 class ChatListViewModel(app: Application) : BaseViewModel(
     app,
     (app as MoonChat).repository,
@@ -31,9 +30,11 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     private val messagesRootRef by lazy { FirebaseDatabase.getInstance().getReference("Message") }
     private var chatListListener: ListenerRegistration? = null
     private var presenceListener: ValueEventListener? = null
+    private var typingStatusListener: ValueEventListener? = null
     private var lastMessageListener: ValueEventListener? = null
     private var latestChatDocuments: List<com.google.firebase.firestore.DocumentSnapshot> = emptyList()
     private var userOnlineStates: Map<String, Boolean> = emptyMap()
+    private var typingUsersMap: Map<String, Boolean> = emptyMap()
     private var latestMessagesByChannel: Map<String, LastMessagePreview> = emptyMap()
 
     private val _chatItems = MutableStateFlow<List<ChatItem>>(emptyList())
@@ -44,6 +45,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
 
     init {
         observeUsersPresence()
+        observeTypingStatuses()
         observeLastMessages()
         fetchChats()
     }
@@ -81,6 +83,24 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         presenceRef.addValueEventListener(presenceListener!!)
     }
 
+    private fun observeTypingStatuses() {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        val typingRef = FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId)
+
+        typingStatusListener?.let { typingRef.removeEventListener(it) }
+        typingStatusListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                typingUsersMap = snapshot.children.associate { child ->
+                    (child.key ?: "") to (child.getValue(Boolean::class.java) ?: false)
+                }
+                publishChats()
+            }
+
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) = Unit
+        }
+        typingRef.addValueEventListener(typingStatusListener!!)
+    }
+
     private fun observeLastMessages() {
         val currentUserId = mAuth.currentUser?.uid ?: return
         val userMessagesRef = messagesRootRef.child("Sender: $currentUserId")
@@ -107,7 +127,8 @@ class ChatListViewModel(app: Application) : BaseViewModel(
 
                     channelId to LastMessagePreview(
                         text = latestMessage.text,
-                        timestamp = latestMessage.date.time
+                        timestamp = latestMessage.date.time,
+                        status = latestMessage.deliveryStatusText()
                     )
                 }
                 publishChats()
@@ -127,6 +148,14 @@ class ChatListViewModel(app: Application) : BaseViewModel(
             val latestMessage = latestMessagesByChannel[document.id]
             val effectiveTimestamp = latestMessage?.timestamp ?: firestoreTimestamp?.time ?: 0L
 
+            val currentUserId = mAuth.currentUser?.uid
+            val lastMessageSenderId = document.getString("lastMessageSenderId")
+            val lastMessageStatus = when {
+                latestMessage != null -> latestMessage.status
+                lastMessageSenderId == currentUserId -> "Sent"
+                else -> ""
+            }
+
             ChatItem(
                 chatId = document.id,
                 recipientId = recipientId,
@@ -135,7 +164,9 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                 onlineState = userOnlineStates[recipientId] ?: false,
                 time = effectiveTimestamp.takeIf { it > 0L }?.let { formatChatTime(Date(it)) }.orEmpty(),
                 lastMessage = latestMessage?.text ?: document.getString("lastMessage") ?: "",
-                hasUnreadIncoming = !lastMessageRead
+                hasUnreadIncoming = !lastMessageRead,
+                isTyping = typingUsersMap[recipientId] ?: false,
+                lastMessageStatus = lastMessageStatus
             )
         }
             .sortedByDescending { chat ->
@@ -148,7 +179,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     }
 
     private fun formatChatTime(date: Date): String {
-        return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(date)
+        return SimpleDateFormat("h:mm a", Locale.getDefault()).format(date)
     }
 
     fun openChat(recipientId: String) {
@@ -168,6 +199,9 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         chatListListener?.remove()
         presenceListener?.let { presenceRef.removeEventListener(it) }
         mAuth.currentUser?.uid?.let { currentUserId ->
+            typingStatusListener?.let {
+                FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId).removeEventListener(it)
+            }
             lastMessageListener?.let {
                 messagesRootRef.child("Sender: $currentUserId").removeEventListener(it)
             }
@@ -177,7 +211,8 @@ class ChatListViewModel(app: Application) : BaseViewModel(
 
     private data class LastMessagePreview(
         val text: String,
-        val timestamp: Long
+        val timestamp: Long,
+        val status: String = ""
     )
 
     private inline fun <T, R : Any> Iterable<T>.associateNotNull(transform: (T) -> Pair<String, R>?): Map<String, R> {

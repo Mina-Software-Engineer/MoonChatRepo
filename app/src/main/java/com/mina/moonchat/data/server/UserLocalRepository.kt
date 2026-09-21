@@ -89,17 +89,22 @@ class UserLocalRepository(
         CoroutineScope(Dispatchers.IO).launch {
             // Get the timestamp of the newest message we have
             val newestMessage = msgDao.getNewestMessage(channelId)
-            val fromTimestamp = newestMessage?.firebaseTimestamp ?: System.currentTimeMillis()
+            // Use a small buffer (10 seconds) to ensure we catch status updates for recent messages
+            val fromTimestamp = (newestMessage?.firebaseTimestamp ?: System.currentTimeMillis()) - 10000
 
             Log.d("TAG", "Starting realtime sync from timestamp: $fromTimestamp")
 
             val listener = server.listenForNewMessages(
-                currentUserId,
-                recipientId,
-                fromTimestamp
-            ) { newMessage ->
-                handleIncomingMessage(newMessage, currentUserId)
-            }
+                currentUserId = currentUserId,
+                recipientId = recipientId,
+                fromTimestamp = fromTimestamp,
+                onMessageChanged = { updatedMessage ->
+                    handleIncomingMessageUpdate(updatedMessage)
+                },
+                onNewMessage = { newMessage ->
+                    handleIncomingMessage(newMessage, currentUserId)
+                }
+            )
 
             activeListener = ActiveListener(
                 currentUserId = currentUserId,
@@ -129,6 +134,27 @@ class UserLocalRepository(
         activeListener = null
     }
 
+    private fun handleIncomingMessageUpdate(message: TextMessage) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val existing = msgDao.getMessageById(message.id) ?: return@launch
+                
+                // Update local flags from server
+                val updated = existing.copy(
+                    isRead = message.isRead,
+                    isDelivered = message.isDelivered,
+                    status = if (existing.status == MessageStatus.PENDING || existing.status == MessageStatus.FAILED) 
+                        MessageStatus.SENT else existing.status
+                )
+                
+                msgDao.insertAll(listOf(updated))
+                Log.d(TAG, "Message status updated from server: ${message.id}, read=${message.isRead}, delivered=${message.isDelivered}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling incoming message update: ${e.message}")
+            }
+        }
+    }
+
     /**
      * Handle incoming message from Firebase
      * Prevents duplicates and updates existing messages
@@ -136,47 +162,61 @@ class UserLocalRepository(
     private fun handleIncomingMessage(message: TextMessage, currentUserId: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (message.senderId == currentUserId) {
-                    Log.d(TAG, "Ignoring realtime echo for current user's message: ${message.id}")
-                    return@launch
-                }
-
                 val channelId = getChannelId(message.senderId, message.recipientId)
+
+                // Check if chat is open to mark as read immediately
+                val isChatOpen = activeListener?.recipientId == message.senderId
+                val finalIsRead = if (isChatOpen) true else message.isRead
+                val finalIsDelivered = true // Received on device means delivered
+
+                // Update Firebase if we altered states locally (for recipient)
+                if (message.senderId != currentUserId && (finalIsRead != message.isRead || finalIsDelivered != message.isDelivered)) {
+                    server.updateMessageStatusOnFirebase(
+                        senderId = message.senderId,
+                        recipientId = message.recipientId,
+                        messageId = message.id,
+                        isRead = finalIsRead,
+                        isDelivered = finalIsDelivered
+                    )
+                }
 
                 // Check if message already exists
                 val existingMessage = msgDao.getMessageById(message.id)
 
                 if (existingMessage != null) {
-                    // Message exists - update if needed
-                    if (existingMessage.status == MessageStatus.PENDING) {
-                        // This was our pending message that got confirmed
-                        msgDao.updateMessageStatus(message.id, MessageStatus.SYNCED)
-                        Log.d("TAG", "Pending message confirmed: ${message.id}")
-                    }
-                    // Otherwise, it's a duplicate - ignore
-                } else {
-                    // New message - determine status
-                    val status = when {
-                        message.senderId == currentUserId -> MessageStatus.SYNCED
-                        else -> MessageStatus.RECEIVED
-                    }
-
-                    val messageDTO = message.toMessagesDTO(status).copy(
-                        channelID = channelId,
-                        firebaseTimestamp = message.date.time
+                    // Update flags even if it's our own message (echo)
+                    val updatedDTO = existingMessage.copy(
+                        isRead = finalIsRead,
+                        isDelivered = finalIsDelivered
                     )
-
-                    msgDao.insertMessage(messageDTO)
-                    server.updateOwnChatChannel(
-                        ownerUserId = currentUserId,
-                        otherUserId = message.senderId,
-                        otherUserName = message.senderName,
-                        lastMessage = message.text,
-                        lastMessageSenderId = message.senderId,
-                        timestamp = message.date.time
-                    )
-                    Log.d("TAG", "New message saved: ${message.id}, status: $status")
+                    msgDao.insertAll(listOf(updatedDTO))
+                    Log.d(TAG, "Existing message updated: ${message.id}, read=$finalIsRead, delivered=$finalIsDelivered")
+                    return@launch
                 }
+
+                // New message - Only continue if it's NOT an echo
+                if (message.senderId == currentUserId) {
+                    Log.d(TAG, "Ignoring new message echo: ${message.id}")
+                    return@launch
+                }
+
+                val messageDTO = message.toMessagesDTO(MessageStatus.RECEIVED).copy(
+                    channelID = channelId,
+                    firebaseTimestamp = message.date.time,
+                    isRead = finalIsRead,
+                    isDelivered = finalIsDelivered
+                )
+
+                msgDao.insertMessage(messageDTO)
+                server.updateOwnChatChannel(
+                    ownerUserId = currentUserId,
+                    otherUserId = message.senderId,
+                    otherUserName = message.senderName,
+                    lastMessage = message.text,
+                    lastMessageSenderId = message.senderId,
+                    timestamp = message.date.time
+                )
+                Log.d("TAG", "New message saved: ${message.id}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling incoming message: ${e.message}")
             }
@@ -198,6 +238,8 @@ class UserLocalRepository(
         val pendingMessage = message.copy(
             id = messageId,
             status = "PENDING",
+            isRead = false,
+            isDelivered = false
         )
 
         // 2. Save to Room immediately (optimistic UI)
@@ -249,8 +291,22 @@ class UserLocalRepository(
     /**
      * Mark messages as read
      */
-    suspend fun markMessagesAsRead(channelId: String, currentUserId: String) {
-        msgDao.markMessagesAsRead(channelId, currentUserId)
+    suspend fun markMessagesAsRead(channelId: String, currentUserId: String, recipientId: String) {
+        try {
+            val unread = msgDao.getUnreadMessages(channelId, currentUserId)
+            unread.forEach { msg ->
+                server.updateMessageStatusOnFirebase(
+                    senderId = msg.senderId,
+                    recipientId = msg.recipientId,
+                    messageId = msg.messageId,
+                    isRead = true,
+                    isDelivered = true
+                )
+            }
+            msgDao.markMessagesAsRead(channelId, currentUserId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking messages as read: ${e.message}")
+        }
     }
 
     /**

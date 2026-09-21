@@ -20,7 +20,7 @@
     <color name="chat_toolbar_color">#3e4858</color>
 
 
-    <color name="chat_list_background_color">#000606</color>
+    <color name="chat_list_background_color">#0D1117</color>
 
     <!-- Primary Brand Colors - Slightly brighter for dark mode -->
     <color name="primary">#10B981</color>
@@ -40,7 +40,7 @@
     <color name="text_on_primary">#000000</color>
 
     <!-- Status Colors - Brighter variants -->
-    <color name="online_indicator">#34D399</color>
+    <color name="online_indicator">#22C55E</color>
     <color name="error">#E60D0D</color>
     <color name="error_surface">#450A0A</color>
     <color name="divider">#1E293B</color>
@@ -60,7 +60,7 @@
     <color name="contacts_list_username_color">#1F2937</color>
     <color name="contacts_list_tag_color">#9CA3AF</color>
     <color name="accent_teal">#2D9F6C</color>
-    <color name="chat_background">#0D1410</color>
+    <color name="chat_background">#0D1117</color>
     <color name="icon_gray">#7A8B7D</color>
 
 </resources>

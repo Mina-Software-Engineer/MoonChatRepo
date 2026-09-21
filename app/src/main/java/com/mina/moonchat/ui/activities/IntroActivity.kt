@@ -6,8 +6,8 @@ import com.mina.moonchat.R
 
 class IntroActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
         setTheme(R.style.Theme_MoonChat)
+        super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_intro)
     }
 }

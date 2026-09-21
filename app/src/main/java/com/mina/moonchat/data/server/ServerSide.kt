@@ -17,7 +17,6 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.mina.moonchat.models.ChatItem
 import com.mina.moonchat.models.TextMessage
-import com.mina.moonchat.models.longToDate
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -70,10 +69,11 @@ class ServerSide {
             "recipientId" to message.recipientId,
             "senderName" to message.senderName,
             "recipientName" to message.recipientName,
-            "date" to longToDate(System.currentTimeMillis()), // Use server timestamp
+            "date" to Date(), // Use server timestamp
             "type" to message.type,
             "channelId" to channelId,
-            "isRead" to false
+            "isRead" to false,
+            "isDelivered" to false
         )
 
         // Save to sender's path
@@ -177,7 +177,7 @@ class ServerSide {
             .child("ChannelID: $channelId")
             .child("Messages")
             .orderByChild("date")
-            .startAfter(fromTimestamp.toDouble())
+            .startAt(fromTimestamp.toDouble())
 
         val listener = object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
@@ -218,6 +218,7 @@ class ServerSide {
         currentUserId: String,
         recipientId: String,
         fromTimestamp: Long = 0,
+        onMessageChanged: (TextMessage) -> Unit = {},
         onNewMessage: (TextMessage) -> Unit
     ): ChildEventListener {
         val channelId = getChatChannelId(currentUserId, recipientId)
@@ -227,7 +228,7 @@ class ServerSide {
             .child("ChannelID: $channelId")
             .child("Messages")
             .orderByChild("date")
-            .startAfter(fromTimestamp.toDouble())
+            .startAt(fromTimestamp.toDouble())
 
         val listener = object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
@@ -236,7 +237,12 @@ class ServerSide {
                     onNewMessage(message)
                 }
             }
-            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                snapshot.getValue(TextMessage::class.java)?.let { message ->
+                    message.id = snapshot.key ?: ""
+                    onMessageChanged(message)
+                }
+            }
             override fun onChildRemoved(snapshot: DataSnapshot) {}
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onCancelled(error: DatabaseError) {
@@ -280,6 +286,22 @@ class ServerSide {
             .child(messageId)
             .child("isRead")
             .setValue(true)
+    }
+
+    fun updateMessageStatusOnFirebase(
+        senderId: String,
+        recipientId: String,
+        messageId: String,
+        isRead: Boolean,
+        isDelivered: Boolean
+    ) {
+        val channelId = getChatChannelId(senderId, recipientId)
+        val updates = hashMapOf<String, Any>(
+            "isRead" to isRead,
+            "isDelivered" to isDelivered
+        )
+        messagesRef.child("Sender: $senderId").child("ChannelID: $channelId").child("Messages").child(messageId).updateChildren(updates)
+        messagesRef.child("Sender: $recipientId").child("ChannelID: $channelId").child("Messages").child(messageId).updateChildren(updates)
     }
 
     /**

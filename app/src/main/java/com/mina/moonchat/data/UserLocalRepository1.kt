@@ -88,9 +88,9 @@ class UserLocalRepository1(
 
     }
 
-    fun getLastMessageInfoFromServer(senderID: String, recipientID: String, lastLoadedMessageId: Long, onNewMessage: (TextMessage) -> Unit) {
+    /*fun getLastMessageInfoFromServer(senderID: String, recipientID: String, lastLoadedMessageId: Long, onNewMessage: (TextMessage) -> Unit) {
         server.listenForNewMessages(senderID, recipientID, lastLoadedMessageId, onNewMessage)
-    }
+    }*/
 
     //Getting recipient message from server
     suspend fun getNewMessageFromServerToDB(senderID: String, recipientID: String) {

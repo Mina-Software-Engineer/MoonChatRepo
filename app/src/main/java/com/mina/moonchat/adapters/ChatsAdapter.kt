@@ -53,13 +53,45 @@ class ChatsViewHolder(
 
         binding.itemNameTextView.text = user.username
         binding.itemTimeTextView.text = user.time
-        binding.itemLastMessageTextView.text = user.lastMessage
-        binding.itemLastMessageTextView.setTextColor(
-            ContextCompat.getColor(
-                binding.root.context,
-                if (user.hasUnreadIncoming) R.color.white else R.color.chat_list_last_message_color
-            )
+
+        val stateColor = ContextCompat.getColor(
+            binding.root.context,
+            if (user.hasUnreadIncoming) R.color.white else R.color.chat_list_last_message_color
         )
+
+        if (user.isTyping) {
+            binding.itemLastMessageTextView.text = "Typing..."
+            binding.itemLastMessageTextView.setTextColor(android.graphics.Color.parseColor("#059669"))
+            binding.itemStatusImageView.visibility = View.GONE
+        } else {
+            binding.itemLastMessageTextView.text = user.lastMessage
+            binding.itemLastMessageTextView.setTextColor(stateColor)
+
+            if (user.lastMessageStatus.isBlank()) {
+                binding.itemStatusImageView.visibility = View.GONE
+            } else {
+                binding.itemStatusImageView.apply {
+                    visibility = View.VISIBLE
+                    setImageResource(
+                        when (user.lastMessageStatus) {
+                            "Pending" -> R.drawable.ic_pending
+                            "Seen" -> R.drawable.ic_double_tick_seen
+                            "Delivered" -> R.drawable.ic_double_tick
+                            "Failed" -> R.drawable.ic_failed
+                            else -> R.drawable.ic_tick
+                        }
+                    )
+                    
+                    val iconTint = when (user.lastMessageStatus) {
+                        "Seen" -> android.graphics.Color.parseColor("#93C5FD")
+                        "Failed" -> android.graphics.Color.parseColor("#FCA5A5")
+                        else -> stateColor
+                    }
+                    setColorFilter(iconTint)
+                }
+            }
+        }
+
         binding.onlineIndicator.visibility = View.VISIBLE
         binding.onlineIndicator.setBackgroundResource(
             if (user.onlineState) R.drawable.online_indicator else R.drawable.offline_indicator

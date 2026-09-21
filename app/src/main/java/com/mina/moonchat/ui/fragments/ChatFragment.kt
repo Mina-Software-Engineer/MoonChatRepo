@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.paging.LoadState
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.google.firebase.auth.FirebaseAuth
 import com.mina.moonchat.R
@@ -129,14 +130,18 @@ class ChatFragment : BaseFragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
-            messageAdapter.onPagesUpdatedFlow.collectLatest {
-                if (pendingBottomScroll && messageAdapter.itemCount > 0) {
-                    binding.chatRecyclerView.post {
-                        binding.chatRecyclerView.scrollToPosition(0)
-                        pendingBottomScroll = false
+            messageAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+                override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                    if (positionStart == 0) {
+                        if (isNearBottom() || pendingBottomScroll) {
+                            binding.chatRecyclerView.post {
+                                binding.chatRecyclerView.smoothScrollToPosition(0)
+                                pendingBottomScroll = false
+                            }
+                        }
                     }
                 }
-            }
+            })
         }
     }
 
@@ -153,6 +158,11 @@ class ChatFragment : BaseFragment() {
         _viewModel.isSending.observe(viewLifecycleOwner) { isSending ->
             binding.sendBtn.isEnabled = !isSending
             binding.sendBtn.alpha = if (isSending) 0.5f else 1.0f
+        }
+
+        // Observe text changes for typing state
+        _viewModel.textMessage.observe(viewLifecycleOwner) { text ->
+            _viewModel.onTextChanged(text.orEmpty())
         }
     }
 

@@ -58,6 +58,6 @@ class ChatPagingSource(
     }
 
     private fun formatChatTime(date: Date): String {
-        return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(date)
+        return SimpleDateFormat("h:mm a", Locale.getDefault()).format(date)
     }
 }

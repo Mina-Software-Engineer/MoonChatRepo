@@ -54,7 +54,7 @@ object BindingAdapters {
     @JvmStatic
     fun TextView.convertDateToTime(date: Date?) {
         date?.let {
-            text = format("hh:mm:ss a", date)
+            text = format("h:mm a", date)
         }
     }
 }

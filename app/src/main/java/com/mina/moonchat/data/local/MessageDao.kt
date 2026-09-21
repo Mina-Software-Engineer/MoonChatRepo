@@ -115,6 +115,9 @@ interface MessageDao {
     @Query("UPDATE MessageEntity SET is_read = 1 WHERE channelID = :channelId AND sender_id != :currentUserId")
     suspend fun markMessagesAsRead(channelId: String, currentUserId: String)
 
+    @Query("SELECT * FROM MessageEntity WHERE channelID = :channelId AND sender_id != :currentUserId AND is_read = 0")
+    suspend fun getUnreadMessages(channelId: String, currentUserId: String): List<MessagesDTO>
+
     /**
      * Get unread count for a channel
      */

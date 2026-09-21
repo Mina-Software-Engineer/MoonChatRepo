@@ -16,6 +16,7 @@ import com.google.firebase.database.ValueEventListener
 import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.models.User
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.Date
 
@@ -33,12 +34,17 @@ class ChatViewModel(app: Application) : BaseViewModel(
         FirebaseDatabase.getInstance().getReference("Users states")
     }
     private var recipientPresenceListener: ValueEventListener? = null
+    private var recipientTypingListener: ValueEventListener? = null
+    private var lastTypingResetJob: Job? = null
 
     // UI State
     val textMessage = MutableLiveData<String>()
     val username = MutableLiveData<String>()
     val onlineStatus = MutableLiveData<String>()
     val profilePicture = MutableLiveData<String>()
+    
+    private val _recipientTyping = MutableLiveData<Boolean>(false)
+    val recipientTyping: LiveData<Boolean> = _recipientTyping
 
     // Error state
     private val _errorMessage = MutableLiveData<String?>()
@@ -73,13 +79,20 @@ class ChatViewModel(app: Application) : BaseViewModel(
         currentRecipientId?.let { recipientId ->
             mAuth.currentUser?.uid?.let { currentUserId ->
                 repository.stopRealtimeSync(currentUserId, recipientId)
+                lastTypingResetJob?.cancel()
+                FirebaseDatabase.getInstance().getReference("typingStatus")
+                    .child(recipientId)
+                    .child(currentUserId)
+                    .setValue(false)
             }
         }
         stopObservingRecipientPresence()
+        stopObservingRecipientTyping()
     }
 
     fun observeRecipientPresence(recipientId: String) {
         stopObservingRecipientPresence()
+        observeRecipientTyping(recipientId)
 
         recipientPresenceListener = object : ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
@@ -102,6 +115,50 @@ class ChatViewModel(app: Application) : BaseViewModel(
         val listener = recipientPresenceListener ?: return
         presenceRef.child(recipientId).removeEventListener(listener)
         recipientPresenceListener = null
+    }
+
+    fun observeRecipientTyping(recipientId: String) {
+        stopObservingRecipientTyping()
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        val typingRef = FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId).child(recipientId)
+
+        recipientTypingListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                val isTyping = snapshot.getValue(Boolean::class.java) ?: false
+                _recipientTyping.postValue(isTyping)
+            }
+
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+                Log.e(TAG, "Failed to observe recipient typing: ${error.message}")
+            }
+        }
+        typingRef.addValueEventListener(recipientTypingListener!!)
+    }
+
+    private fun stopObservingRecipientTyping() {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        val recipientId = currentRecipientId ?: return
+        val listener = recipientTypingListener ?: return
+        FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId).child(recipientId).removeEventListener(listener)
+        recipientTypingListener = null
+    }
+
+    fun onTextChanged(text: String) {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        val recipientId = currentRecipientId ?: return
+        val ref = FirebaseDatabase.getInstance().getReference("typingStatus").child(recipientId).child(currentUserId)
+
+        if (text.isEmpty()) {
+            lastTypingResetJob?.cancel()
+            ref.setValue(false)
+        } else {
+            lastTypingResetJob?.cancel()
+            ref.setValue(true)
+            lastTypingResetJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(2000)
+                ref.setValue(false)
+            }
+        }
     }
 
     /**
@@ -173,7 +230,7 @@ class ChatViewModel(app: Application) : BaseViewModel(
             try {
                 val currentUserId = mAuth.currentUser?.uid ?: return@launch
                 val channelId = repository.getChannelId(currentUserId, recipientId)
-                repository.markMessagesAsRead(channelId, currentUserId)
+                repository.markMessagesAsRead(channelId, currentUserId, recipientId)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to mark messages as read: ${e.message}")
             }
