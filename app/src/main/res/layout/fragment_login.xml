@@ -16,7 +16,7 @@
         android:layout_height="match_parent"
         android:background="@color/login_bg"
         android:orientation="vertical"
-        android:paddingHorizontal="43dp"
+        android:paddingHorizontal="20dp"
         tools:context=".ui.fragments.LoginFragment">
 
 
@@ -24,7 +24,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
+            android:layout_gravity="start"
             android:text="@string/login"
             android:layout_marginTop="70dp"
             android:textColor="@color/white"
@@ -34,11 +34,12 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
+            android:layout_gravity="start"
             android:layout_marginBottom="35dp"
-            android:text="Welcome Back !"
+            android:text="Sign in to continue"
             android:textColor="@color/gray"
-            android:textSize="13sp" />
+            android:textStyle="bold"
+            android:textSize="15sp" />
 
 
         <com.google.android.material.textfield.TextInputLayout
@@ -87,6 +88,16 @@
 
         </com.google.android.material.textfield.TextInputLayout>
 
+        <TextView
+            android:id="@+id/forgot_password_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:text="Forgot Password?"
+            android:textColor="#5169B5"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
         <ProgressBar
             android:id="@+id/loading"
             android:layout_width="wrap_content"
@@ -111,15 +122,7 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/forgot_password_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="Forgot Password?"
-            android:textColor="@color/gray"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -141,7 +144,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/sign_up"
-                android:textColor="#b8c1ec"
+                android:textColor="#3F61A4"
                 android:textSize="16sp"
                 android:textStyle="bold"/>
 

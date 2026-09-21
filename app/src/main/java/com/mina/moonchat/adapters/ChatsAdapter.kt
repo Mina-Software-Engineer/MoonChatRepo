@@ -13,7 +13,7 @@ import com.mina.moonchat.databinding.ChatListItemBinding
 import com.mina.moonchat.models.ChatItem
 
 class ChatsAdapter(
-    private val onChatClicked: (ChatItem) -> Unit
+    private val onChatClicked: (ChatItem, Array<View>) -> Unit
 ) : ListAdapter<ChatItem, ChatsViewHolder>(COMPARATOR) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChatsViewHolder {
@@ -37,7 +37,7 @@ class ChatsAdapter(
 
 class ChatsViewHolder(
     private val binding: ChatListItemBinding,
-    private val onChatClicked: (ChatItem) -> Unit
+    private val onChatClicked: (ChatItem, Array<View>) -> Unit
 ) : RecyclerView.ViewHolder(binding.root) {
 
     fun bind(user: ChatItem) {
@@ -54,9 +54,28 @@ class ChatsViewHolder(
         binding.itemNameTextView.text = user.username
         binding.itemTimeTextView.text = user.time
 
+        // Set unique transition names for shared element animation
+        binding.itemCircleImageView.transitionName = "profile_${user.recipientId}"
+        binding.onlineIndicator.transitionName = "online_${user.recipientId}"
+        binding.itemNameTextView.transitionName = "username_${user.recipientId}"
+
+        val context = binding.root.context
+        val isUnread = user.hasUnreadIncoming && user.unreadCount > 0
+
+        if (isUnread) {
+            binding.itemNameTextView.setTextColor(ContextCompat.getColor(context, R.color.chat_list_username_unread_color))
+            binding.itemTimeTextView.setTextColor(ContextCompat.getColor(context, R.color.chat_list_time_unread_color))
+            binding.itemUnreadCountTextView.visibility = View.VISIBLE
+            binding.itemUnreadCountTextView.text = user.unreadCount.toString()
+        } else {
+            binding.itemNameTextView.setTextColor(ContextCompat.getColor(context, R.color.chat_list_username_color))
+            binding.itemTimeTextView.setTextColor(ContextCompat.getColor(context, R.color.chat_list_time_color))
+            binding.itemUnreadCountTextView.visibility = View.GONE
+        }
+
         val stateColor = ContextCompat.getColor(
-            binding.root.context,
-            if (user.hasUnreadIncoming) R.color.white else R.color.chat_list_last_message_color
+            context,
+            if (isUnread) R.color.chat_list_last_message_unread_color else R.color.chat_list_last_message_color
         )
 
         if (user.isTyping) {
@@ -96,11 +115,18 @@ class ChatsViewHolder(
         binding.onlineIndicator.setBackgroundResource(
             if (user.onlineState) R.drawable.online_indicator else R.drawable.offline_indicator
         )
-        binding.root.setOnClickListener { onChatClicked(user) }
+        
+        binding.root.setOnClickListener { 
+            onChatClicked(user, arrayOf(
+                binding.itemCircleImageView,
+                binding.onlineIndicator,
+                binding.itemNameTextView
+            )) 
+        }
     }
 
     companion object {
-        fun create(parent: ViewGroup, onChatClicked: (ChatItem) -> Unit): ChatsViewHolder {
+        fun create(parent: ViewGroup, onChatClicked: (ChatItem, Array<View>) -> Unit): ChatsViewHolder {
             val inflater = LayoutInflater.from(parent.context)
             val binding = ChatListItemBinding.inflate(inflater, parent, false)
             return ChatsViewHolder(binding, onChatClicked)

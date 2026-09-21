@@ -6,12 +6,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.paging.LoadState
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.transition.TransitionInflater
 import com.bumptech.glide.Glide
 import com.google.firebase.auth.FirebaseAuth
 import com.mina.moonchat.R
@@ -42,6 +45,12 @@ class ChatFragment : BaseFragment() {
     private var shouldScrollToBottom = true
     private var pendingBottomScroll = false
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        sharedElementEnterTransition = TransitionInflater.from(requireContext())
+            .inflateTransition(android.R.transition.move)
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -56,14 +65,41 @@ class ChatFragment : BaseFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Postpone transition until image is loaded
+        postponeEnterTransition()
+
         val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
         _viewModel.username.value = recipientUser.displayName
         _viewModel.onlineStatus.value = recipientUser.onlineState
         _viewModel.observeRecipientPresence(recipientUser.userId)
+
         Glide.with(binding.root)
             .load(recipientUser.profileImg)
             .placeholder(R.drawable.ic_account_circle)
             .error(R.drawable.ic_account_circle)
+            .listener(object :
+                com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
+                override fun onLoadFailed(
+                    e: com.bumptech.glide.load.engine.GlideException?,
+                    model: Any?,
+                    target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                    isFirstResource: Boolean
+                ): Boolean {
+                    startPostponedEnterTransition()
+                    return false
+                }
+
+                override fun onResourceReady(
+                    resource: android.graphics.drawable.Drawable?,
+                    model: Any?,
+                    target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                    dataSource: com.bumptech.glide.load.DataSource?,
+                    isFirstResource: Boolean
+                ): Boolean {
+                    startPostponedEnterTransition()
+                    return false
+                }
+            })
             .into(binding.chatPfpImageView)
 
 
@@ -167,6 +203,33 @@ class ChatFragment : BaseFragment() {
     }
 
     private fun setupClickListeners(recipientUser: User) {
+        // Emoji button
+        binding.emojiBtn.setOnClickListener {
+            if (binding.emojiPicker.visibility == View.VISIBLE) {
+                binding.emojiPicker.visibility = View.GONE
+            } else {
+                hideKeyboard()
+                binding.emojiPicker.visibility = View.VISIBLE
+            }
+        }
+
+        // Set emoji picker listener
+        binding.emojiPicker.setOnEmojiPickedListener {
+            binding.textViewMessageBox.append(it.emoji)
+        }
+
+        // Hide emoji picker when text input is clicked
+        binding.textViewMessageBox.setOnClickListener {
+            binding.emojiPicker.visibility = View.GONE
+        }
+
+        // Hide emoji picker when text input is focused
+        binding.textViewMessageBox.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                binding.emojiPicker.visibility = View.GONE
+            }
+        }
+
         // Send button
         binding.sendBtn.setOnClickListener {
             val messageText = binding.textViewMessageBox.text?.toString()?.trim()
@@ -179,7 +242,11 @@ class ChatFragment : BaseFragment() {
 
         // Back button
         binding.toolbarBackBtn.setOnClickListener {
-            findNavController().navigateUp()
+            if (binding.emojiPicker.visibility == View.VISIBLE) {
+                binding.emojiPicker.visibility = View.GONE
+            } else {
+                findNavController().navigateUp()
+            }
         }
 
         // Retry button for failed messages (if you have one in your layout)
@@ -212,6 +279,12 @@ class ChatFragment : BaseFragment() {
         if (force || isNearBottom()) {
             pendingBottomScroll = true
         }
+    }
+
+    private fun hideKeyboard() {
+        val imm =
+            requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
 
     override fun onDestroyView() {

@@ -36,6 +36,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     private var userOnlineStates: Map<String, Boolean> = emptyMap()
     private var typingUsersMap: Map<String, Boolean> = emptyMap()
     private var latestMessagesByChannel: Map<String, LastMessagePreview> = emptyMap()
+    private var unreadCountsByChannel: Map<String, Int> = emptyMap()
 
     private val _chatItems = MutableStateFlow<List<ChatItem>>(emptyList())
     val chatItems: StateFlow<List<ChatItem>> = _chatItems.asStateFlow()
@@ -108,29 +109,47 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         lastMessageListener?.let { userMessagesRef.removeEventListener(it) }
         lastMessageListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                latestMessagesByChannel = snapshot.children.associateNotNull { channelSnapshot ->
+                val tempLastMessages = mutableMapOf<String, LastMessagePreview>()
+                val tempUnreadCounts = mutableMapOf<String, Int>()
+
+                for (channelSnapshot in snapshot.children) {
                     val channelId = channelSnapshot.key
                         ?.removePrefix("ChannelID: ")
                         ?.takeIf { it.isNotBlank() }
-                        ?: return@associateNotNull null
+                        ?: continue
 
-                    val latestMessage = channelSnapshot
-                        .child("Messages")
-                        .children
-                        .mapNotNull { messageSnapshot ->
-                            messageSnapshot.getValue(TextMessage::class.java)?.apply {
-                                id = messageSnapshot.key ?: ""
-                            }
+                    val messagesSnapshot = channelSnapshot.child("Messages")
+                    var unreadCount = 0
+                    var latestMessage: TextMessage? = null
+
+                    for (messageSnapshot in messagesSnapshot.children) {
+                        val msg = messageSnapshot.getValue(TextMessage::class.java) ?: continue
+                        msg.id = messageSnapshot.key ?: ""
+                        
+                        val msgIsRead = messageSnapshot.child("isRead").getValue(Boolean::class.java) ?: msg.isRead
+
+                        // Count unread messages that came from the other person
+                        if (msg.senderId != currentUserId && !msgIsRead) {
+                            unreadCount++
                         }
-                        .maxByOrNull { it.date.time }
-                        ?: return@associateNotNull null
 
-                    channelId to LastMessagePreview(
-                        text = latestMessage.text,
-                        timestamp = latestMessage.date.time,
-                        status = latestMessage.deliveryStatusText()
-                    )
+                        if (latestMessage == null || msg.date.time > latestMessage.date.time) {
+                            latestMessage = msg.copy(isRead = msgIsRead)
+                        }
+                    }
+
+                    if (latestMessage != null) {
+                        tempLastMessages[channelId] = LastMessagePreview(
+                            text = latestMessage.text,
+                            timestamp = latestMessage.date.time,
+                            status = latestMessage.deliveryStatusText()
+                        )
+                    }
+                    tempUnreadCounts[channelId] = unreadCount
                 }
+
+                latestMessagesByChannel = tempLastMessages
+                unreadCountsByChannel = tempUnreadCounts
                 publishChats()
             }
 
@@ -144,11 +163,13 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         val chats = latestChatDocuments.mapNotNull { document ->
             val recipientId = document.getString("recipientId") ?: return@mapNotNull null
             val firestoreTimestamp = document.getTimestamp("date")?.toDate()
-            val lastMessageRead = document.getBoolean("lastMessageRead") ?: true
             val latestMessage = latestMessagesByChannel[document.id]
             val effectiveTimestamp = latestMessage?.timestamp ?: firestoreTimestamp?.time ?: 0L
 
             val currentUserId = mAuth.currentUser?.uid
+            val calculatedUnreadCount = unreadCountsByChannel[document.id] ?: 0
+            val isUnreadCalculated = calculatedUnreadCount > 0
+
             val lastMessageSenderId = document.getString("lastMessageSenderId")
             val lastMessageStatus = when {
                 latestMessage != null -> latestMessage.status
@@ -164,7 +185,8 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                 onlineState = userOnlineStates[recipientId] ?: false,
                 time = effectiveTimestamp.takeIf { it > 0L }?.let { formatChatTime(Date(it)) }.orEmpty(),
                 lastMessage = latestMessage?.text ?: document.getString("lastMessage") ?: "",
-                hasUnreadIncoming = !lastMessageRead,
+                hasUnreadIncoming = isUnreadCalculated,
+                unreadCount = calculatedUnreadCount,
                 isTyping = typingUsersMap[recipientId] ?: false,
                 lastMessageStatus = lastMessageStatus
             )

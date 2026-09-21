@@ -14,8 +14,6 @@ import com.mina.moonchat.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var adapter: ViewPagerAdapter
-
     private val mAuth: FirebaseAuth by lazy {       //instead of typing val mAuth: FirebaseAuth? = null
         FirebaseAuth.getInstance()                  //mAuth = FirebaseAuth.getInstance()
     }

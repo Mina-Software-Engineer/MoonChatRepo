@@ -15,8 +15,8 @@
         <item name="android:textColorSecondary">@color/text_secondary</item>
 
         <!-- Status Bar -->
-        <item name="android:statusBarColor">@color/background</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/statusBar_color</item>
+        <item name="android:windowLightStatusBar">false</item>
 
         <!-- Navigation Bar -->
         <item name="android:navigationBarColor">@color/surface</item>

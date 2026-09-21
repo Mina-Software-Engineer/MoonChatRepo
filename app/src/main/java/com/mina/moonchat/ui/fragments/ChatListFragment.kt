@@ -7,12 +7,14 @@ import android.view.ViewGroup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.mina.moonchat.adapters.ChatsAdapter
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentChatListBinding
+import com.mina.moonchat.models.User
 import com.mina.moonchat.viewmodels.ChatListViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -37,8 +39,28 @@ class ChatListFragment : BaseFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        chatsAdapter = ChatsAdapter { chatItem ->
-            _viewModel.openChat(chatItem.recipientId)
+        chatsAdapter = ChatsAdapter { chatItem, sharedViews ->
+            val extras = FragmentNavigatorExtras(
+                sharedViews[0] to "chat_profile_image_transition",
+                sharedViews[1] to "chat_online_indicator_transition",
+                sharedViews[2] to "chat_username_transition"
+            )
+
+            val user = User(
+                userId = chatItem.recipientId,
+                displayName = chatItem.username,
+                email = "",
+                password = "",
+                profileImg = chatItem.profileImg,
+                onlineState = if (chatItem.onlineState) "Online" else "Offline",
+                bio = "",
+                id = chatItem.recipientId
+            )
+
+            findNavController().navigate(
+                MainScreenFragmentDirections.actionMainScreenFragmentToChatFragment(user),
+                extras
+            )
         }
 
         binding.chatRecyclerView.apply {
@@ -53,14 +75,6 @@ class ChatListFragment : BaseFragment() {
                     chatsAdapter.submitList(chats.toList())
                 }
             }
-        }
-
-        _viewModel.selectedChatUser.observe(viewLifecycleOwner) { user ->
-            user ?: return@observe
-            findNavController().navigate(
-                MainScreenFragmentDirections.actionMainScreenFragmentToChatFragment(user)
-            )
-            _viewModel.onChatNavigated()
         }
     }
 

@@ -27,6 +27,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
+        android:paddingHorizontal="20dp"
         android:background="@color/login_bg"
         android:weightSum="3">
 
@@ -37,7 +38,6 @@
             android:layout_height="150dp"
             android:layout_gravity="center"
             android:layout_marginTop="70dp"
-            android:layout_marginBottom="20dp"
             android:src="@drawable/moonchat_logo1"/>
 
 
@@ -45,11 +45,20 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/create_new_account"
-            android:textSize="25sp"
-            android:layout_marginBottom="20dp"
+            android:textSize="35sp"
+            android:layout_gravity="start"
             android:textStyle="bold"
-            android:textColor="@color/white"
-            android:textAllCaps="true"/>
+            android:textColor="@color/white"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginBottom="35dp"
+            android:text="Join and start chatting"
+            android:textColor="@color/gray"
+            android:textStyle="bold"
+            android:textSize="15sp" />
 
 
 
@@ -57,9 +66,7 @@
         android:id="@+id/cardView_login"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingBottom="23dp"
-        android:paddingTop="20dp">
+        android:orientation="vertical">
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/editText_name_signup_container"
@@ -68,7 +75,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="30dp"
             android:layout_marginEnd="30dp"
-            android:hint="Name">
+            android:hint="Full Name">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/editText_name_signup"

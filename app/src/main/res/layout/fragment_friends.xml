@@ -33,6 +33,8 @@
                 android:id="@+id/search"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:background="#1F2937"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
                 app:queryHint="Search by name or tag (#1234)"
                 android:clickable="true"
                 android:focusable="true" />

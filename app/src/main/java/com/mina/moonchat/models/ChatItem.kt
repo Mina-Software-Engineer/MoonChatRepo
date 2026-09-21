@@ -9,6 +9,7 @@ data class ChatItem(
     val time: String,
     val lastMessage: String,
     val hasUnreadIncoming: Boolean = false,
+    val unreadCount: Int = 0,
     val isTyping: Boolean = false,
     val lastMessageStatus: String = ""
 )

@@ -7,7 +7,7 @@
     <color name="on_primary">#000000</color>
 
     <!-- Background Colors - Deep Slate -->
-    <color name="background">#020617</color>
+    <color name="background">#0B0F17</color>
     <color name="surface">#000000</color>
     <color name="surface_variant">#000000</color>
 
@@ -16,6 +16,7 @@
     <color name="text_secondary">#94A3B8</color>
     <color name="text_tertiary">#64748B</color>
     <color name="text_on_primary">#000000</color>
+    <color name="login_bg">#0B0F17</color>
 
     <!-- Status Colors - Brighter variants -->
     <color name="online_indicator">#22C55E</color>

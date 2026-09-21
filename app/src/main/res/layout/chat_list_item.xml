@@ -64,25 +64,14 @@
 
     <ImageView
         android:id="@+id/item_status_imageView"
-        android:layout_width="16dp"
-        android:layout_height="16dp"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
         android:layout_marginStart="6dp"
         android:contentDescription="Message Status"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/item_lastMessage_textView"
         app:layout_constraintEnd_toEndOf="parent"
         tools:src="@drawable/ic_double_tick_seen" />
-
-    <!--<TextView
-        android:id="@+id/item_status_textView"
-        android:layout_width="wrap_content"
-        android:layout_height="20dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="8dp"
-        android:textColor="@color/white"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/item_time_textView"
-        tools:text="Status" />-->
 
     <TextView
         android:id="@+id/item_time_textView"
@@ -93,5 +82,24 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/item_name_textView"
         tools:text="@tools:sample/date/hhmm" />
+
+    <TextView
+        android:id="@+id/item_unread_count_textView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/unread_indicator_background"
+        android:gravity="center"
+        android:minWidth="20dp"
+        android:minHeight="20dp"
+        android:paddingHorizontal="6dp"
+        android:textColor="@color/white"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/item_lastMessage_textView"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="3"
+        tools:visibility="visible" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

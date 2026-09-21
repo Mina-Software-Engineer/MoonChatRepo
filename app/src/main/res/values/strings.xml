@@ -10,9 +10,9 @@
     <string name="invalid_password">Password must be > 5 characters</string>
     <string name="login_failed">"Login failed"</string>
     <!-- TODO: Remove or change this placeholder text -->
-    <string name="create_new_account">Create New Account</string>
+    <string name="create_new_account">Create Account</string>
     <string name="invalid_Email">Enter a valid email form, ex: example@example.com</string>
-    <string name="login">Login</string>
+    <string name="login">Welcome Back!</string>
     <string name="email">Email</string>
     <string name="password">Password</string>
 

@@ -22,10 +22,6 @@ class MainScreenFragment : Fragment() {
 
     private lateinit var adapter: ViewPagerAdapter
 
-    /*private val mAuth: FirebaseAuth by lazy {       //instead of typing val mAuth: FirebaseAuth? = null
-        FirebaseAuth.getInstance()                  //mAuth = FirebaseAuth.getInstance()
-    }*/
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -51,9 +47,6 @@ class MainScreenFragment : Fragment() {
 
         viewPager.adapter = adapter
 
-        /*tabLayout.setScrollPosition(1, 0F, true)
-        viewPager.currentItem = 1*/
-
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 viewPager.currentItem = tab!!.position
@@ -67,7 +60,7 @@ class MainScreenFragment : Fragment() {
 
             }
         })
-        val customFont = ResourcesCompat.getFont(requireContext(), R.font.comic_neue_bold)
+        /*val customFont = ResourcesCompat.getFont(requireContext(), R.font.comic_neue_bold)
         for (i in 0 until tabLayout.tabCount) {
             val tab = (tabLayout.getChildAt(0) as ViewGroup).getChildAt(i) as ViewGroup
             for (j in 0 until tab.childCount) {
@@ -77,7 +70,7 @@ class MainScreenFragment : Fragment() {
                     tabView.typeface = customFont
                 }
             }
-        }
+        }*/
 
 
 

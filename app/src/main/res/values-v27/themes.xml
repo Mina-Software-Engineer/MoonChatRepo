@@ -17,32 +17,8 @@
         <item name="android:textColorSecondary">@color/text_secondary</item>
 
         <!-- Status Bar -->
-        <item name="android:statusBarColor">@color/background</item>
-        <item name="android:windowLightStatusBar">true</item>
-
-        <!-- Navigation Bar -->
-        <item name="android:navigationBarColor">@color/surface</item>
-        <item name="android:windowLightNavigationBar">true</item>
-    </style>
-
-    <style name="Theme.MoonChat" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <!-- Brand Colors -->
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryVariant">@color/primary_variant</item>
-        <item name="colorOnPrimary">@color/on_primary</item>
-
-        <!-- Background -->
-        <item name="android:colorBackground">@color/background</item>
-        <item name="colorSurface">@color/surface</item>
-        <item name="colorSurfaceVariant">@color/surface_variant</item>
-
-        <!-- Text -->
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
-
-        <!-- Status Bar -->
-        <item name="android:statusBarColor">@color/background</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/statusBar_color</item>
+        <item name="android:windowLightStatusBar">false</item>
 
         <!-- Navigation Bar -->
         <item name="android:navigationBarColor">@color/surface</item>

@@ -49,6 +49,12 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+
+    configurations.all {
+        resolutionStrategy {
+            force 'com.google.errorprone:error_prone_annotations:2.26.1'
+        }
+    }
 }
 
 dependencies {
@@ -63,11 +69,11 @@ dependencies {
     implementation 'com.google.firebase:firebase-storage-ktx'
 
     // Other dependencies
-    implementation 'androidx.core:core-ktx:1.7.0'
-    implementation 'androidx.appcompat:appcompat:1.4.1'
-    implementation 'com.google.android.material:material:1.5.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.3'
-    implementation 'androidx.annotation:annotation:1.3.0'
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.annotation:annotation:1.6.0'
     kapt "androidx.lifecycle:lifecycle-compiler:2.5.1"
     implementation "androidx.lifecycle:lifecycle-extensions:2.2.0"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:2.5.1"
@@ -81,10 +87,9 @@ dependencies {
 
     //Koin-core
     implementation "io.insert-koin:koin-android:$koin_android_version"
-    implementation "io.insert-koin:koin-android:3.3.0"
 
     //Splash screen
-    implementation 'androidx.core:core-splashscreen:1.0.0-alpha02'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
 
     // for adding recyclerview
     implementation 'androidx.recyclerview:recyclerview:1.2.0'
@@ -109,6 +114,9 @@ dependencies {
     implementation "androidx.paging:paging-runtime-ktx:3.2.0"
 
     implementation "androidx.room:room-paging:2.4.3"
+
+    //Emoji Picker
+    implementation 'androidx.emoji2:emoji2-emojipicker:1.4.0'
 
     //Cloudinary
     implementation 'com.cloudinary:kotlin-url-gen:1.7.0'

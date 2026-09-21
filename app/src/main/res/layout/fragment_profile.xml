@@ -14,7 +14,7 @@
         android:id="@+id/profile_screen"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/login_bg"
+        android:background="#0B0F17"
         tools:context=".ui.fragments.ProfileFragment">
 
         <de.hdodenhof.circleimageview.CircleImageView

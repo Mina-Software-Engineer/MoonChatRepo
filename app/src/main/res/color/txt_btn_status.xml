@@ -4,14 +4,14 @@
     <item
         android:state_enabled="true"
         android:state_pressed="false"
-        android:color="@color/login_bg">
+        android:color="@color/white">
     </item>
 
     <!--when enabled and pressed-->
     <item
         android:state_enabled="true"
         android:state_pressed="true"
-        android:color="@color/login_bg" >
+        android:color="@color/white" >
     </item>
 
     <!--when disabled and not pressed-->
