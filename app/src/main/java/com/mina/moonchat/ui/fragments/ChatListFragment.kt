@@ -72,7 +72,7 @@ class ChatListFragment : BaseFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 _viewModel.chatItems.collectLatest { chats ->
-                    chatsAdapter.submitList(chats.toList())
+                    chatsAdapter.submitList(chats)
                 }
             }
         }

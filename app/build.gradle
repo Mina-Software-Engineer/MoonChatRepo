@@ -61,8 +61,8 @@ dependencies {
     // Import the BoM for Firebase
     implementation platform('com.google.firebase:firebase-bom:31.2.0')
 
-    // Add Firebase libraries without specifying versions
-    implementation 'com.google.firebase:firebase-database'
+    // Add Firebase libraries
+    implementation 'com.google.firebase:firebase-database-ktx'
     implementation 'com.google.firebase:firebase-auth-ktx'
     implementation 'com.google.firebase:firebase-firestore-ktx'
     implementation 'com.google.firebase:firebase-messaging-ktx'
@@ -120,4 +120,9 @@ dependencies {
 
     //Cloudinary
     implementation 'com.cloudinary:kotlin-url-gen:1.7.0'
+
+    //Lottie Animation
+    implementation 'com.github.LottieFiles:dotlottie-android:0.4.1'
+
+
 }

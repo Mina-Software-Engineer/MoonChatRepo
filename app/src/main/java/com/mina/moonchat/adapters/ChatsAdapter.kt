@@ -40,11 +40,27 @@ class ChatsViewHolder(
     private val onChatClicked: (ChatItem, Array<View>) -> Unit
 ) : RecyclerView.ViewHolder(binding.root) {
 
+    private var currentItem: ChatItem? = null
+
+    init {
+        binding.root.setOnClickListener {
+            currentItem?.let { user ->
+                onChatClicked(user, arrayOf(
+                    binding.itemCircleImageView,
+                    binding.onlineIndicator,
+                    binding.itemNameTextView
+                ))
+            }
+        }
+    }
+
     fun bind(user: ChatItem) {
+        currentItem = user
+
         if (user.profileImg.isNullOrBlank()) {
             binding.itemCircleImageView.setImageResource(R.drawable.ic_account_circle)
         } else {
-            Glide.with(binding.root)
+            Glide.with(binding.itemCircleImageView)
                 .load(user.profileImg)
                 .placeholder(R.drawable.ic_account_circle)
                 .error(R.drawable.ic_account_circle)
@@ -115,14 +131,6 @@ class ChatsViewHolder(
         binding.onlineIndicator.setBackgroundResource(
             if (user.onlineState) R.drawable.online_indicator else R.drawable.offline_indicator
         )
-        
-        binding.root.setOnClickListener { 
-            onChatClicked(user, arrayOf(
-                binding.itemCircleImageView,
-                binding.onlineIndicator,
-                binding.itemNameTextView
-            )) 
-        }
     }
 
     companion object {

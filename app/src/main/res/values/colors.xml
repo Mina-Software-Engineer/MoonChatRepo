@@ -69,4 +69,7 @@
     <color name="chat_background">#0D1117</color>
     <color name="icon_gray">#7A8B7D</color>
 
+    <!-- Shimmer -->
+    <color name="shimmer_color">#CECFD2</color>
+
 </resources>

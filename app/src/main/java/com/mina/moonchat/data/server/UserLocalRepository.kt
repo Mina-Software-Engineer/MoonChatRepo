@@ -8,12 +8,19 @@ import androidx.paging.PagingData
 import androidx.paging.map
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.FirebaseFirestore
 import com.mina.moonchat.data.dto.MessageStatus
 import com.mina.moonchat.data.dto.MessagesDTO
 import com.mina.moonchat.data.dto.toMessagesDTO
 import com.mina.moonchat.data.dto.toTextMessage
 import com.mina.moonchat.data.local.UserDatabase
 import com.mina.moonchat.models.TextMessage
+import com.mina.moonchat.utils.FcmNotificationSender
+import com.mina.moonchat.utils.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -112,6 +119,59 @@ class UserLocalRepository(
                 listener = listener
             )
         }
+    }
+
+    private var globalMessageListener: ValueEventListener? = null
+
+    /**
+     * Start listening for all incoming messages for the logged-in user across all channels.
+     * Triggers notifications when the user receives messages while not in that specific chat.
+     */
+    fun startGlobalIncomingMessageListener() {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        if (globalMessageListener != null) return
+
+        val userMessagesRef = FirebaseDatabase.getInstance()
+            .getReference("Message")
+            .child("Sender: $currentUserId")
+
+        globalMessageListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    for (channelSnapshot in snapshot.children) {
+                        val messagesSnapshot = channelSnapshot.child("Messages")
+                        for (messageSnapshot in messagesSnapshot.children) {
+                            val msg = messageSnapshot.getValue(TextMessage::class.java) ?: continue
+                            msg.id = messageSnapshot.key ?: ""
+
+                            val isRead = messageSnapshot.child("isRead").getValue(Boolean::class.java) ?: msg.isRead
+
+                            if (msg.senderId != currentUserId && !isRead) {
+                                handleIncomingMessage(msg, currentUserId)
+                            }
+                        }
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e(TAG, "Global message listener cancelled: ${error.message}")
+            }
+        }
+
+        userMessagesRef.addValueEventListener(globalMessageListener!!)
+        Log.d(TAG, "Global incoming message listener started for user: $currentUserId")
+    }
+
+    fun stopGlobalIncomingMessageListener() {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        globalMessageListener?.let {
+            FirebaseDatabase.getInstance()
+                .getReference("Message")
+                .child("Sender: $currentUserId")
+                .removeEventListener(it)
+        }
+        globalMessageListener = null
     }
 
     /**
@@ -216,6 +276,29 @@ class UserLocalRepository(
                     lastMessageSenderId = message.senderId,
                     timestamp = message.date.time
                 )
+
+                // Show notification if user is not in the chat with sender
+                FirebaseFirestore.getInstance().collection("Users").document(message.senderId).get()
+                    .addOnSuccessListener { doc ->
+                        val pfp = doc.getString("profileImg") ?: doc.getString("pfp")
+                        NotificationHelper.showNotification(
+                            messageId = message.id,
+                            senderId = message.senderId,
+                            senderName = message.senderName,
+                            senderProfileImg = pfp,
+                            messageText = message.text
+                        )
+                    }
+                    .addOnFailureListener {
+                        NotificationHelper.showNotification(
+                            messageId = message.id,
+                            senderId = message.senderId,
+                            senderName = message.senderName,
+                            senderProfileImg = null,
+                            messageText = message.text
+                        )
+                    }
+
                 Log.d("TAG", "New message saved: ${message.id}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling incoming message: ${e.message}")
@@ -267,6 +350,16 @@ class UserLocalRepository(
                         recipientName = pendingMessage.recipientName,
                         recipientProfileImg = recipientProfileImg,
                         lastMessage = pendingMessage.text
+                    )
+
+                    // Trigger FCM push notification to recipient
+                    FcmNotificationSender.sendNotification(
+                        recipientId = pendingMessage.recipientId,
+                        senderId = pendingMessage.senderId,
+                        senderName = pendingMessage.senderName,
+                        senderProfileImg = senderProfileImg,
+                        messageText = pendingMessage.text,
+                        messageId = messageId
                     )
                 }
             },

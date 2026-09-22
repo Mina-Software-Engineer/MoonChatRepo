@@ -189,13 +189,10 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                 unreadCount = calculatedUnreadCount,
                 isTyping = typingUsersMap[recipientId] ?: false,
                 lastMessageStatus = lastMessageStatus
-            )
+            ) to effectiveTimestamp
         }
-            .sortedByDescending { chat ->
-                latestMessagesByChannel[chat.chatId]?.timestamp
-                    ?: latestChatDocuments.firstOrNull { it.id == chat.chatId }?.getTimestamp("date")?.toDate()?.time
-                    ?: 0L
-            }
+            .sortedByDescending { it.second }
+            .map { it.first }
 
         _chatItems.value = chats
     }

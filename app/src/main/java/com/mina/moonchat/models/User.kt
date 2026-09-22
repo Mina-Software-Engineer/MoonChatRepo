@@ -9,17 +9,16 @@ import kotlinx.android.parcel.Parcelize
  */
 @Parcelize
 data class User(
-    val userId: String,
-    val displayName: String,
-    val email: String,
-    val password: String,
-    val profileImg: String?,
-    val onlineState: String,
-    val bio: String,
-    val id: String
-): Parcelable{
-    constructor(): this("", "", "", "", null, "", "", "")
-}
+    var userId: String = "",
+    var displayName: String = "",
+    var email: String = "",
+    var password: String = "",
+    var profileImg: String? = null,
+    var onlineState: String = "",
+    var bio: String = "",
+    var id: String = "",
+    var fcmToken: String = ""
+): Parcelable
 
 //converting the Asteroid Domain Model list to Asteroid Entity list
 fun List<User>.asAsteroidEntityModel(): List<AuthUserDTO> {
@@ -36,19 +35,3 @@ fun List<User>.asAsteroidEntityModel(): List<AuthUserDTO> {
         )
     }
 }
-
-//converting the Asteroid Entity list to Asteroid Domain Model list
-/*
-fun List<AsteroidEntity>.asDomainModel(): List<Asteroid> {
-    return map {
-        Asteroid(
-            id = it.id,
-            codename = it.codename,
-            closeApproachDate = it.date,
-            absoluteMagnitude = it.absoluteMagnitude,
-            estimatedDiameter = it.estimatedDiameter,
-            relativeVelocity = it.relativeVelocity,
-            distanceFromEarth = it.distance,
-            isPotentiallyHazardous = it.isPotentiallyHazardous
-        )
-    }*/

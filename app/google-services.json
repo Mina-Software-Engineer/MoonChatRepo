@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "163820076622",
+    "firebase_url": "https://moon-chat-d7d85-default-rtdb.firebaseio.com",
     "project_id": "moon-chat-d7d85",
     "storage_bucket": "moon-chat-d7d85.appspot.com"
   },
@@ -12,12 +13,7 @@
           "package_name": "com.mina.moonchat"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "163820076622-r8lhjvnai4k6b4pbp92jr2bs67kf3ag3.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
           "current_key": "AIzaSyAv9AgEafAtTVr461zFkFsSKMhYFeYzq5w"
@@ -25,12 +21,7 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "163820076622-r8lhjvnai4k6b4pbp92jr2bs67kf3ag3.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

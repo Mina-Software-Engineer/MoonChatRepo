@@ -12,6 +12,11 @@ import org.koin.dsl.module
 
 class MoonChat : Application() {
 
+    companion object {
+        lateinit var instance: MoonChat
+            private set
+    }
+
     val database by lazy { UserDatabase.getDatabase(this) }
     private val server by lazy { ServerSide() }
     val repository by lazy { UserLocalRepository1(database.authDao(), database.userDao(), database.messageDao(), server) }
@@ -19,6 +24,7 @@ class MoonChat : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
 
         /**
          * use Koin Library as a service locator

@@ -22,6 +22,8 @@ import com.mina.moonchat.adapters.MessageAdapter
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentChatBinding
 import com.mina.moonchat.models.User
+import com.mina.moonchat.utils.ActiveChatManager
+import com.mina.moonchat.utils.NotificationHelper
 import com.mina.moonchat.viewmodels.ChatViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -109,6 +111,9 @@ class ChatFragment : BaseFragment() {
 
         // Load messages
         loadMessages(recipientUser.userId)
+
+        // Clear notification unread stack for this sender
+        NotificationHelper.clearUnreadForSender(recipientUser.userId)
 
         // Mark messages as read when opening chat
         _viewModel.markMessagesAsRead(recipientUser.userId)
@@ -285,6 +290,28 @@ class ChatFragment : BaseFragment() {
         val imm =
             requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        try {
+            val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
+            ActiveChatManager.activeRecipientId = recipientUser.userId
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting activeRecipientId in onStart: ${e.message}")
+        }
+    }
+
+    override fun onStop() {
+        try {
+            val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
+            if (ActiveChatManager.activeRecipientId == recipientUser.userId) {
+                ActiveChatManager.activeRecipientId = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing activeRecipientId in onStop: ${e.message}")
+        }
+        super.onStop()
     }
 
     override fun onDestroyView() {
