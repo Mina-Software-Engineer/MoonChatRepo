@@ -125,16 +125,19 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                     for (messageSnapshot in messagesSnapshot.children) {
                         val msg = messageSnapshot.getValue(TextMessage::class.java) ?: continue
                         msg.id = messageSnapshot.key ?: ""
-                        
+
                         val msgIsRead = messageSnapshot.child("isRead").getValue(Boolean::class.java) ?: msg.isRead
+                        val msgIsDelivered = messageSnapshot.child("isDelivered").getValue(Boolean::class.java) ?: msg.isDelivered
+
+                        val fullMsg = msg.copy(isRead = msgIsRead, isDelivered = msgIsDelivered)
 
                         // Count unread messages that came from the other person
-                        if (msg.senderId != currentUserId && !msgIsRead) {
+                        if (fullMsg.senderId != currentUserId && !fullMsg.isRead) {
                             unreadCount++
                         }
 
-                        if (latestMessage == null || msg.date.time > latestMessage.date.time) {
-                            latestMessage = msg.copy(isRead = msgIsRead)
+                        if (latestMessage == null || fullMsg.date.time > latestMessage.date.time) {
+                            latestMessage = fullMsg
                         }
                     }
 
@@ -142,7 +145,8 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                         tempLastMessages[channelId] = LastMessagePreview(
                             text = latestMessage.text,
                             timestamp = latestMessage.date.time,
-                            status = latestMessage.deliveryStatusText()
+                            status = latestMessage.deliveryStatusText(),
+                            senderId = latestMessage.senderId
                         )
                     }
                     tempUnreadCounts[channelId] = unreadCount
@@ -170,10 +174,10 @@ class ChatListViewModel(app: Application) : BaseViewModel(
             val calculatedUnreadCount = unreadCountsByChannel[document.id] ?: 0
             val isUnreadCalculated = calculatedUnreadCount > 0
 
-            val lastMessageSenderId = document.getString("lastMessageSenderId")
+            val lastMessageSenderId = latestMessage?.senderId ?: document.getString("lastMessageSenderId")
             val lastMessageStatus = when {
-                latestMessage != null -> latestMessage.status
-                lastMessageSenderId == currentUserId -> "Sent"
+                latestMessage != null && latestMessage.senderId == currentUserId -> latestMessage.status
+                latestMessage == null && lastMessageSenderId == currentUserId -> "Sent"
                 else -> ""
             }
 
@@ -231,7 +235,8 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     private data class LastMessagePreview(
         val text: String,
         val timestamp: Long,
-        val status: String = ""
+        val status: String = "",
+        val senderId: String = ""
     )
 
     private inline fun <T, R : Any> Iterable<T>.associateNotNull(transform: (T) -> Pair<String, R>?): Map<String, R> {

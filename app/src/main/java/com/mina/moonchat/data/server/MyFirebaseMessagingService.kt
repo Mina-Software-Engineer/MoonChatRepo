@@ -22,36 +22,51 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         val data = remoteMessage.data
         val notification = remoteMessage.notification
 
-        val senderName = data["senderName"]
-            ?: data["title"]
-            ?: notification?.title
-            ?: "MoonChat"
-
-        val senderProfileImg = data["senderProfileImg"]
-            ?: data["profileImg"]
-            ?: data["pfp"]
-
-        val messageText = data["message"]
-            ?: data["body"]
-            ?: data["messageText"]
-            ?: notification?.body
-            ?: "New incoming message"
-
-        val timeString = data["time"] ?: data["timestamp"]
-        val senderId = data["senderId"]
-        val messageId = data["messageId"] ?: data["id"]
         val type = data["type"] ?: "CHAT_MESSAGE"
+        val senderId = data["senderId"]
+        val senderName = data["senderName"] ?: "MoonChat User"
+        val senderProfileImg = data["senderProfileImg"] ?: data["profileImg"] ?: data["pfp"]
+        val requestId = data["requestId"] ?: data["messageId"] ?: ""
 
-        NotificationHelper.showNotification(
-            context = this,
-            messageId = messageId,
-            senderId = senderId,
-            senderName = senderName,
-            senderProfileImg = senderProfileImg,
-            messageText = messageText,
-            timeString = timeString,
-            type = type
-        )
+        when (type) {
+            "FRIEND_REQUEST" -> {
+                NotificationHelper.showFriendRequestNotification(
+                    context = this,
+                    requestId = requestId,
+                    senderId = senderId ?: "",
+                    senderName = senderName,
+                    senderProfileImg = senderProfileImg
+                )
+            }
+            "FRIEND_REQUEST_ACCEPTED" -> {
+                NotificationHelper.showFriendRequestAcceptedNotification(
+                    context = this,
+                    senderId = senderId ?: "",
+                    senderName = senderName,
+                    senderProfileImg = senderProfileImg
+                )
+            }
+            else -> {
+                val messageText = data["message"]
+                    ?: data["body"]
+                    ?: data["messageText"]
+                    ?: notification?.body
+                    ?: "New incoming message"
+                val timeString = data["time"] ?: data["timestamp"]
+                val messageId = data["messageId"] ?: data["id"]
+
+                NotificationHelper.showNotification(
+                    context = this,
+                    messageId = messageId,
+                    senderId = senderId,
+                    senderName = senderName,
+                    senderProfileImg = senderProfileImg,
+                    messageText = messageText,
+                    timeString = timeString,
+                    type = type
+                )
+            }
+        }
     }
 
     override fun onNewToken(token: String) {

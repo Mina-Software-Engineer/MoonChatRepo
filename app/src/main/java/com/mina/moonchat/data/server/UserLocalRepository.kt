@@ -35,6 +35,31 @@ class UserLocalRepository(
     private val msgDao = db.messageDao()
     private val mAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
+    private val networkObserver by lazy {
+        com.mina.moonchat.utils.NetworkObserver(com.mina.moonchat.application.MoonChat.instance) {
+            Log.d(TAG, "Internet connection restored, auto-syncing queued pending/failed messages...")
+            CoroutineScope(Dispatchers.IO).launch {
+                syncPendingMessages()
+            }
+        }
+    }
+
+    fun startNetworkObserver() {
+        try {
+            networkObserver.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting network observer: ${e.message}")
+        }
+    }
+
+    fun stopNetworkObserver() {
+        try {
+            networkObserver.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping network observer: ${e.message}")
+        }
+    }
+
     companion object {
         private const val TAG = "UserLocalRepository"
         private const val PAGE_SIZE = 20
@@ -201,9 +226,9 @@ class UserLocalRepository(
                 
                 // Update local flags from server
                 val updated = existing.copy(
-                    isRead = message.isRead,
-                    isDelivered = message.isDelivered,
-                    status = if (existing.status == MessageStatus.PENDING || existing.status == MessageStatus.FAILED) 
+                    isRead = message.isRead || existing.isRead,
+                    isDelivered = message.isDelivered || existing.isDelivered,
+                    status = if (existing.status == MessageStatus.PENDING || existing.status == MessageStatus.FAILED)
                         MessageStatus.SENT else existing.status
                 )
                 
@@ -222,15 +247,22 @@ class UserLocalRepository(
     private fun handleIncomingMessage(message: TextMessage, currentUserId: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Ignore own sent messages (echos from Firebase) on the sender's device.
+                // Delivery and Read statuses are only updated by the recipient's device.
+                if (message.senderId == currentUserId) {
+                    Log.d(TAG, "Ignoring own message echo in handleIncomingMessage: ${message.id}")
+                    return@launch
+                }
+
                 val channelId = getChannelId(message.senderId, message.recipientId)
 
                 // Check if chat is open to mark as read immediately
-                val isChatOpen = activeListener?.recipientId == message.senderId
+                val isChatOpen = activeListener?.recipientId == message.senderId || com.mina.moonchat.utils.ActiveChatManager.activeRecipientId == message.senderId
                 val finalIsRead = if (isChatOpen) true else message.isRead
-                val finalIsDelivered = true // Received on device means delivered
+                val finalIsDelivered = true // Received on recipient's device means delivered
 
                 // Update Firebase if we altered states locally (for recipient)
-                if (message.senderId != currentUserId && (finalIsRead != message.isRead || finalIsDelivered != message.isDelivered)) {
+                if (finalIsRead != message.isRead || finalIsDelivered != message.isDelivered) {
                     server.updateMessageStatusOnFirebase(
                         senderId = message.senderId,
                         recipientId = message.recipientId,
@@ -244,19 +276,13 @@ class UserLocalRepository(
                 val existingMessage = msgDao.getMessageById(message.id)
 
                 if (existingMessage != null) {
-                    // Update flags even if it's our own message (echo)
+                    // Update flags
                     val updatedDTO = existingMessage.copy(
                         isRead = finalIsRead,
                         isDelivered = finalIsDelivered
                     )
                     msgDao.insertAll(listOf(updatedDTO))
                     Log.d(TAG, "Existing message updated: ${message.id}, read=$finalIsRead, delivered=$finalIsDelivered")
-                    return@launch
-                }
-
-                // New message - Only continue if it's NOT an echo
-                if (message.senderId == currentUserId) {
-                    Log.d(TAG, "Ignoring new message echo: ${message.id}")
                     return@launch
                 }
 
@@ -307,7 +333,7 @@ class UserLocalRepository(
     }
 
     /**
-     * Send message with optimistic UI update
+     * Send message with optimistic UI update and offline queuing
      */
     suspend fun sendMessage(
         message: TextMessage,
@@ -318,20 +344,28 @@ class UserLocalRepository(
         val messageId = message.id.takeIf { it.isNotBlank() } ?: server.createMessageId()
             ?: throw IllegalStateException("Failed to generate message ID")
 
+        val isOnline = networkObserver.isNetworkConnected()
+        val initialStatus = if (isOnline) MessageStatus.PENDING else MessageStatus.FAILED
+
         val pendingMessage = message.copy(
             id = messageId,
-            status = "PENDING",
+            status = initialStatus.name,
             isRead = false,
             isDelivered = false
         )
 
         // 2. Save to Room immediately (optimistic UI)
-        val pendingDTO = pendingMessage.toMessagesDTO(MessageStatus.PENDING).copy(
+        val pendingDTO = pendingMessage.toMessagesDTO(initialStatus).copy(
             channelID = channelId,
             firebaseTimestamp = System.currentTimeMillis()
         )
         msgDao.insertMessage(pendingDTO)
-        Log.d("TAG", "Pending message saved: $messageId")
+        Log.d(TAG, "Message saved locally: $messageId, initialStatus=$initialStatus")
+
+        if (!isOnline) {
+            Log.w(TAG, "Device is offline. Message $messageId marked as FAILED and queued for auto-resend when reconnected.")
+            return
+        }
 
         // 3. Send to Firebase
         server.sendMessage(
@@ -339,7 +373,7 @@ class UserLocalRepository(
             onSuccess = { firebaseId ->
                 CoroutineScope(Dispatchers.IO).launch {
                     msgDao.updateMessageStatus(messageId, MessageStatus.SENT)
-                    Log.d("TAG", "Pending message marked as sent: $firebaseId")
+                    Log.d(TAG, "Message marked as SENT: $firebaseId")
 
                     // Update chat channel metadata
                     server.updateChatChannels(
@@ -366,7 +400,7 @@ class UserLocalRepository(
             onError = { error ->
                 CoroutineScope(Dispatchers.IO).launch {
                     msgDao.updateMessageStatus(messageId, MessageStatus.FAILED)
-                    Log.e("TAG", "Failed to send message: ${error.message}")
+                    Log.e(TAG, "Failed to send message: ${error.message}")
                 }
             }
         )

@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import android.content.Intent
 import androidx.navigation.fragment.NavHostFragment
+import androidx.lifecycle.lifecycleScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
@@ -21,6 +22,8 @@ import com.mina.moonchat.R
 import com.mina.moonchat.application.MoonChat
 import com.mina.moonchat.databinding.ActivityMainBinding
 import com.mina.moonchat.models.User
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -109,11 +112,17 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         startPresenceTracking()
-        (application as? MoonChat)?.repo?.startGlobalIncomingMessageListener()
+        val repository = (application as? MoonChat)?.repo
+        repository?.startGlobalIncomingMessageListener()
+        repository?.startNetworkObserver()
+        lifecycleScope.launch(Dispatchers.IO) {
+            repository?.syncPendingMessages()
+        }
     }
 
     override fun onStop() {
         setCurrentUserPresence("Offline")
+        (application as? MoonChat)?.repo?.stopNetworkObserver()
         connectionListener?.let { connectedRef.removeEventListener(it) }
         connectionListener = null
         super.onStop()

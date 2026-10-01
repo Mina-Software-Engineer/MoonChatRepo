@@ -7,12 +7,14 @@ import androidx.core.net.toUri
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.mina.moonchat.application.MoonChat
 import com.mina.moonchat.base.BaseViewModel
 import com.mina.moonchat.data.dto.AuthUserDTO
 import com.mina.moonchat.intro_activity.data.Result
 import com.mina.moonchat.utils.CloudinaryImageUploader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class ProfileViewModel(
@@ -144,20 +146,13 @@ class ProfileViewModel(
         }
     }
 
-    fun deleteCurrentUserFromDB(){
-        viewModelScope.launch {
-            val result = localRepo.getCurrentUserInfo()
-            when(result){
-                is Result.Success<*> -> {
-                    localRepo.deleteCurrentUserInfo()
-                }
-                is Result.Error -> {
-                    Toast.makeText(
-                        app.applicationContext,
-                        "Theres was error deleting user from database: ${result.exception}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+    fun deleteCurrentUserFromDB() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                (app as MoonChat).database.clearAllTables()
+                Log.d("ProfileViewModel", "All Room database tables cleared on sign out.")
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Error clearing Room database on sign out: ${e.message}")
             }
         }
     }

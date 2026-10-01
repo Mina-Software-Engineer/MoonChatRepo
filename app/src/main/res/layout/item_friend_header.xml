@@ -30,17 +30,5 @@
             app:layout_constraintStart_toEndOf="@+id/tv_header_title"
             app:layout_constraintTop_toTopOf="@+id/tv_header_title" />
 
-        <ImageView
-            android:id="@+id/btn_add_friend_header"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:src="@drawable/ic_person_add"
-            android:visibility="gone"
-            android:contentDescription="Add Friend"
-            app:tint="@color/white"
-            app:layout_constraintBottom_toBottomOf="@+id/tv_header_title"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@+id/tv_header_title" />
-
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>

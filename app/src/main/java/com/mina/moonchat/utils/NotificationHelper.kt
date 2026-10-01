@@ -9,6 +9,8 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 import com.bumptech.glide.Glide
 import com.google.firebase.auth.FirebaseAuth
 import com.mina.moonchat.R
@@ -25,7 +27,7 @@ object NotificationHelper {
     private const val TAG = "NotificationHelper"
     const val CHANNEL_ID = "chat_messages_channel"
     const val CHANNEL_NAME = "Chat Messages"
-    const val CHANNEL_DESC = "Notifications for incoming chat messages"
+    const val CHANNEL_DESC = "Notifications for incoming chat messages and requests"
 
     private val shownMessageIds = Collections.synchronizedSet(LinkedHashSet<String>())
     private val unreadMessagesBySender = ConcurrentHashMap<String, MutableList<String>>()
@@ -94,6 +96,7 @@ object NotificationHelper {
         val totalUnreadCount = senderUnreadList.size
         // Limit displayed lines in notification stack to the last 3 messages
         val displayedMessages = senderUnreadList.takeLast(3)
+        val unreadBadgeText = if (totalUnreadCount > 9) "9+" else totalUnreadCount.toString()
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -137,32 +140,36 @@ object NotificationHelper {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                val titleText = if (totalUnreadCount == 1) "New message" else "New messages"
-                val formattedContentText = "$senderName: $messageText"
-
-                // Build InboxStyle notification for stacked messages (max 3 lines displayed)
-                val inboxStyle = NotificationCompat.InboxStyle()
-                    .setBigContentTitle(titleText)
-
-                for (msg in displayedMessages) {
-                    inboxStyle.addLine("$senderName: $msg")
-                }
-
-                if (totalUnreadCount > 3) {
-                    inboxStyle.setSummaryText("+${totalUnreadCount - 3} more")
-                } else if (totalUnreadCount > 1) {
-                    inboxStyle.setSummaryText("$totalUnreadCount messages")
-                }
-
                 // Load Large Icon (Sender Profile Image)
                 val largeIconBitmap = loadBitmap(context, senderProfileImg)
+
+                // Build Person object for MessagingStyle
+                val senderPersonBuilder = Person.Builder()
+                    .setName(senderName)
+
+                if (largeIconBitmap != null) {
+                    senderPersonBuilder.setIcon(IconCompat.createWithBitmap(largeIconBitmap))
+                }
+                val senderPerson = senderPersonBuilder.build()
+
+                // MessagingStyle shows up to 3 messages stacked line by line
+                val messagingStyle = NotificationCompat.MessagingStyle(senderPerson)
+                    .setConversationTitle(senderName)
+                    .setGroupConversation(false)
+
+                for (msg in displayedMessages) {
+                    messagingStyle.addMessage(msg, System.currentTimeMillis(), senderPerson)
+                }
+
+                val titleText = senderName
+                val subText = "$unreadBadgeText unread"
 
                 val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_app_logo)
                     .setContentTitle(titleText)
-                    .setSubText(senderName)
-                    .setContentText(formattedContentText)
-                    .setStyle(inboxStyle)
+                    .setSubText(subText)
+                    .setContentText(messageText)
+                    .setStyle(messagingStyle)
                     .setNumber(totalUnreadCount)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -176,9 +183,158 @@ object NotificationHelper {
 
                 val notificationId = senderId.hashCode()
                 notificationManager.notify(notificationId, notificationBuilder.build())
-                Log.d(TAG, "Notification shown for sender: $senderName ($senderId) - title: '$titleText', content: '$formattedContentText'")
+                Log.d(TAG, "Notification shown for sender: $senderName ($senderId) - total unread: $totalUnreadCount ($unreadBadgeText)")
             } catch (e: Exception) {
                 Log.e(TAG, "Error building notification: ${e.message}", e)
+            }
+        }
+    }
+
+    fun showFriendRequestNotification(
+        context: Context = MoonChat.instance,
+        requestId: String,
+        senderId: String,
+        senderName: String,
+        senderProfileImg: String?
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val channel = NotificationChannel(
+                        CHANNEL_ID,
+                        CHANNEL_NAME,
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = CHANNEL_DESC
+                        enableLights(true)
+                        enableVibration(true)
+                    }
+                    notificationManager.createNotificationChannel(channel)
+                }
+
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra("navTarget", "friends")
+                }
+
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    requestId.hashCode(),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                // Accept Action
+                val acceptIntent = Intent(context, FriendRequestActionReceiver::class.java).apply {
+                    action = "ACTION_ACCEPT_FRIEND_REQUEST"
+                    putExtra("requestId", requestId)
+                    putExtra("senderId", senderId)
+                    putExtra("senderName", senderName)
+                }
+                val acceptPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    (requestId + "_accept").hashCode(),
+                    acceptIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                // Reject Action
+                val rejectIntent = Intent(context, FriendRequestActionReceiver::class.java).apply {
+                    action = "ACTION_REJECT_FRIEND_REQUEST"
+                    putExtra("requestId", requestId)
+                    putExtra("senderId", senderId)
+                }
+                val rejectPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    (requestId + "_reject").hashCode(),
+                    rejectIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val largeIconBitmap = loadBitmap(context, senderProfileImg)
+
+                val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_app_logo)
+                    .setContentTitle("New Friend Request")
+                    .setSubText(senderName)
+                    .setContentText("Friend request from $senderName")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+                    .addAction(R.drawable.ic_tick, "Accept", acceptPendingIntent)
+                    .addAction(R.drawable.ic_failed, "Reject", rejectPendingIntent)
+
+                if (largeIconBitmap != null) {
+                    notificationBuilder.setLargeIcon(largeIconBitmap)
+                }
+
+                notificationManager.notify(requestId.hashCode(), notificationBuilder.build())
+                Log.d(TAG, "Friend request notification shown for $senderName")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing friend request notification: ${e.message}", e)
+            }
+        }
+    }
+
+    fun showFriendRequestAcceptedNotification(
+        context: Context = MoonChat.instance,
+        senderId: String,
+        senderName: String,
+        senderProfileImg: String?
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val channel = NotificationChannel(
+                        CHANNEL_ID,
+                        CHANNEL_NAME,
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = CHANNEL_DESC
+                        enableLights(true)
+                        enableVibration(true)
+                    }
+                    notificationManager.createNotificationChannel(channel)
+                }
+
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra("senderId", senderId)
+                    putExtra("senderName", senderName)
+                }
+
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    senderId.hashCode(),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val largeIconBitmap = loadBitmap(context, senderProfileImg)
+
+                val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_app_logo)
+                    .setContentTitle("Friend Request Accepted")
+                    .setSubText(senderName)
+                    .setContentText("$senderName accepted your friend request!")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+
+                if (largeIconBitmap != null) {
+                    notificationBuilder.setLargeIcon(largeIconBitmap)
+                }
+
+                notificationManager.notify(("accepted_" + senderId).hashCode(), notificationBuilder.build())
+                Log.d(TAG, "Friend request accepted notification shown for $senderName")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing friend request accepted notification: ${e.message}", e)
             }
         }
     }

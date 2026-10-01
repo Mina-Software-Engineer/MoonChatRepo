@@ -1,7 +1,10 @@
 package com.mina.moonchat.utils
 
+import android.content.Context
 import android.util.Log
+import com.google.auth.oauth2.GoogleCredentials
 import com.google.firebase.firestore.FirebaseFirestore
+import com.mina.moonchat.application.MoonChat
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -11,18 +14,47 @@ import kotlin.concurrent.thread
 object FcmNotificationSender {
     private const val TAG = "FcmNotificationSender"
 
-    private var serverKey: String =
-        "BF18QkrltOxu1esWX2XHNfLR4etGDtFDnrg8TsCHunW78HoZdyBWN7OUyfH5VkXq4AzEWtXKfLjtb3Scwju0g6k"
+    // Optional: Firebase Cloud Messaging Legacy Server Key (starts with AAAA...)
+    private var serverKey: String = ""
+
+    // Firebase Project ID
     private var projectId: String = "moon-chat-d7d85"
-    private var accessToken: String ="ya29.c.c0AZ4bNpYTLeRrbXxzxXSrwaEruBEfh4d7_xNgT9wh2pKaNoTNqz9Q7LMztokwAu4czXoh18MCFLJBlV-w8WHi36_7sgVyKGUpCBa-p03Hvsh4aT4TKbXK9nRuzcgLtkituQ1ek9ofNQ3JG3-dPcgVvXwLI6RJGnpWsiPKquyp3btMorltO_JhMoSSlN-JVx8tmLdtSXjahtOA-w6cGvaag9hWPiYo9zp4SLbFtE6CQQcfu5pt-iq_Pk47EnQhMDQsid6W5_s9vNNSQ9luWTQWvlRtQzrC_HRkfiFfeveOMb97XkaZQIcM3LkWwyiFksIBIoGFBVXhRNnsu8S58PNxdurkTHYxMHLlXe19QT_Qi4Y8dqDFnuBHoMQyT385D_dV_dwteIB_sJMMYv8Qsm-Qmb7ikJWkZO58k5SRtXsn-jlrepQ2hdV6VmM27ur0eUw_4lgXg7xdIkoldpnVui1Wf1uzXrzaWk60hqfeUwyd7jmvBv8ds9pXUUMi-emsXov9OXd-mx6Fcxt5r6Vkb5MRnF8OYfFSgmv-M2pxzbwB-zIbd87S2Qwmchr02mY46XatxdoIkx0IeOaW2Wsv3u26bpkqqVawXo70IisXStzsJ9pi1o9bwS0dtV2oVWkafzo_v5olYOy2v0sdxYmtdvamcU1_QVl0Xmlqp08r-aIhl8zwBQfpXFzXz9xuwm1ikUhnhjZ-dB92vkF0Irv7bUyO1h-bhuJMicbWMRXnJ3fYtgWqbX5eIaeVram8YzXXU6yX4epikOzOy-pFFaRZMUrreF9S9fRjhm0zIo8nUFMoOZlVWe8ZFhaxjMld0gs_wqzS2Q2Oj_xyWv6Xn4gZ0pUlQfxg2gw6phcUubaQxquB4pq6Iuitsd9b9xSlV-FOpr48dru73noWa_Mf7-kXMXhnn1jcVlja4v-mRgQ4YiW-IoSja7X_p8rRf4gliqxB-5kJJX3-t7575afczauV8Ba-XVSp0fJW9aghastkrQU7r7mYq9ZaORtSYZ2"
+
+    private var googleCredentials: GoogleCredentials? = null
 
     fun setServerKey(key: String) {
         serverKey = key
     }
 
-    fun configureV1(projectId: String, accessToken: String) {
-        this.projectId = projectId
-        this.accessToken = accessToken
+    private fun getFreshAccessToken(context: Context): Pair<String, String>? {
+        return try {
+            if (googleCredentials == null) {
+                val inputStream = try {
+                    context.assets.open("service_account.json")
+                } catch (e: Exception) {
+                    Log.w(TAG, "service_account.json not found in app/src/main/assets/")
+                    null
+                }
+
+                if (inputStream != null) {
+                    googleCredentials = GoogleCredentials.fromStream(inputStream)
+                        .createScoped(listOf("https://www.googleapis.com/auth/firebase.messaging"))
+                }
+            }
+
+            val creds = googleCredentials
+            if (creds != null) {
+                creds.refreshIfExpired()
+                val token = creds.accessToken?.tokenValue
+                if (!token.isNullOrBlank()) {
+                    return Pair(token, projectId)
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating fresh OAuth2 token from service_account.json", e)
+            null
+        }
     }
 
     fun sendNotification(
@@ -33,6 +65,61 @@ object FcmNotificationSender {
         messageText: String,
         messageId: String = ""
     ) {
+        sendNotificationInternal(
+            recipientId = recipientId,
+            senderId = senderId,
+            senderName = senderName,
+            senderProfileImg = senderProfileImg,
+            messageText = messageText,
+            messageId = messageId,
+            type = "CHAT_MESSAGE"
+        )
+    }
+
+    fun sendFriendRequestNotification(
+        recipientId: String,
+        senderId: String,
+        senderName: String,
+        senderProfileImg: String?,
+        requestId: String
+    ) {
+        sendNotificationInternal(
+            recipientId = recipientId,
+            senderId = senderId,
+            senderName = senderName,
+            senderProfileImg = senderProfileImg,
+            messageText = "Friend request from $senderName",
+            messageId = requestId,
+            type = "FRIEND_REQUEST"
+        )
+    }
+
+    fun sendFriendRequestAcceptedNotification(
+        recipientId: String,
+        senderId: String,
+        senderName: String,
+        senderProfileImg: String?
+    ) {
+        sendNotificationInternal(
+            recipientId = recipientId,
+            senderId = senderId,
+            senderName = senderName,
+            senderProfileImg = senderProfileImg,
+            messageText = "$senderName accepted your friend request!",
+            messageId = "accepted_$senderId",
+            type = "FRIEND_REQUEST_ACCEPTED"
+        )
+    }
+
+    private fun sendNotificationInternal(
+        recipientId: String,
+        senderId: String,
+        senderName: String,
+        senderProfileImg: String?,
+        messageText: String,
+        messageId: String,
+        type: String
+    ) {
         if (recipientId.isBlank()) return
 
         FirebaseFirestore.getInstance()
@@ -42,27 +129,40 @@ object FcmNotificationSender {
             .addOnSuccessListener { document ->
                 val fcmToken = document.getString("fcmToken") ?: ""
                 if (fcmToken.isNotBlank()) {
-                    if (projectId.isNotBlank() && accessToken.isNotBlank()) {
-                        sendFcmV1Payload(
-                            fcmToken = fcmToken,
-                            senderId = senderId,
-                            senderName = senderName,
-                            senderProfileImg = senderProfileImg,
-                            messageText = messageText,
-                            messageId = messageId
-                        )
-                    } else {
-                        sendFcmLegacyPayload(
-                            fcmToken = fcmToken,
-                            senderId = senderId,
-                            senderName = senderName,
-                            senderProfileImg = senderProfileImg,
-                            messageText = messageText,
-                            messageId = messageId
-                        )
+                    thread {
+                        val tokenAndProject = getFreshAccessToken(MoonChat.instance)
+                        if (tokenAndProject != null) {
+                            val (bearerToken, projId) = tokenAndProject
+                            sendFcmV1Payload(
+                                fcmToken = fcmToken,
+                                projectId = projId,
+                                bearerToken = bearerToken,
+                                senderId = senderId,
+                                senderName = senderName,
+                                senderProfileImg = senderProfileImg,
+                                messageText = messageText,
+                                messageId = messageId,
+                                type = type
+                            )
+                        } else if (serverKey.isNotBlank()) {
+                            sendFcmLegacyPayload(
+                                fcmToken = fcmToken,
+                                senderId = senderId,
+                                senderName = senderName,
+                                senderProfileImg = senderProfileImg,
+                                messageText = messageText,
+                                messageId = messageId,
+                                type = type
+                            )
+                        } else {
+                            Log.w(
+                                TAG,
+                                "Cannot send push notification: Failed to generate OAuth2 token from assets/service_account.json and no Legacy Server Key configured."
+                            )
+                        }
                     }
                 } else {
-                    Log.d(TAG, "Recipient $recipientId has no FCM token registered.")
+                    Log.d(TAG, "Recipient $recipientId has no FCM token registered in Firestore.")
                 }
             }
             .addOnFailureListener { e ->
@@ -72,64 +172,84 @@ object FcmNotificationSender {
 
     private fun sendFcmV1Payload(
         fcmToken: String,
+        projectId: String,
+        bearerToken: String,
         senderId: String,
         senderName: String,
         senderProfileImg: String?,
         messageText: String,
-        messageId: String
+        messageId: String,
+        type: String
     ) {
-        thread {
-            try {
-                val url = URL("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json; UTF-8")
-                conn.setRequestProperty("Authorization", "Bearer $accessToken")
-                conn.doOutput = true
+        try {
+            val url = URL("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json; UTF-8")
+            conn.setRequestProperty("Authorization", "Bearer $bearerToken")
+            conn.doOutput = true
 
-                val messageObj = JSONObject().apply {
-                    put("token", fcmToken)
+            val messageObj = JSONObject().apply {
+                put("token", fcmToken)
 
-                    val notification = JSONObject().apply {
-                        put("title", "New message")
-                        put("body", "$senderName: $messageText")
-                    }
-                    put("notification", notification)
-
-                    val data = JSONObject().apply {
-                        put("senderId", senderId)
-                        put("senderName", senderName)
-                        put("senderProfileImg", senderProfileImg ?: "")
-                        put("message", messageText)
-                        put("messageId", messageId)
-                        put("type", "CHAT_MESSAGE")
-                    }
-                    put("data", data)
-
-                    val androidConfig = JSONObject().apply {
-                        put("priority", "HIGH")
-                        val androidNotification = JSONObject().apply {
-                            put("channel_id", NotificationHelper.CHANNEL_ID)
-                            put("sound", "default")
-                        }
-                        put("notification", androidNotification)
-                    }
-                    put("android", androidConfig)
+                val data = JSONObject().apply {
+                    put("senderId", senderId)
+                    put("senderName", senderName)
+                    put("senderProfileImg", senderProfileImg ?: "")
+                    put("message", messageText)
+                    put("messageId", messageId)
+                    put("requestId", messageId)
+                    put("type", type)
                 }
+                put("data", data)
 
-                val json = JSONObject().apply {
-                    put("message", messageObj)
+                val androidConfig = JSONObject().apply {
+                    put("priority", "HIGH")
                 }
+                put("android", androidConfig)
+            }
 
-                val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
-                writer.write(json.toString())
-                writer.flush()
-                writer.close()
+            val json = JSONObject().apply {
+                put("message", messageObj)
+            }
 
-                val responseCode = conn.responseCode
-                Log.d(TAG, "FCM v1 Push HTTP response code: $responseCode")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending FCM v1 notification payload", e)
+            val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+            writer.write(json.toString())
+            writer.flush()
+            writer.close()
+
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                Log.d(TAG, "FCM v1 Push Notification sent successfully [$responseCode] (type=$type)")
+            } else {
+                val errorText = conn.errorStream?.bufferedReader()?.use { it.readText() }
+                Log.e(TAG, "FCM v1 Push Failed [$responseCode]: $errorText")
+
+                if (serverKey.isNotBlank()) {
+                    Log.d(TAG, "Attempting Legacy FCM fallback...")
+                    sendFcmLegacyPayload(
+                        fcmToken,
+                        senderId,
+                        senderName,
+                        senderProfileImg,
+                        messageText,
+                        messageId,
+                        type
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending FCM v1 notification payload", e)
+            if (serverKey.isNotBlank()) {
+                sendFcmLegacyPayload(
+                    fcmToken,
+                    senderId,
+                    senderName,
+                    senderProfileImg,
+                    messageText,
+                    messageId,
+                    type
+                )
             }
         }
     }
@@ -140,55 +260,52 @@ object FcmNotificationSender {
         senderName: String,
         senderProfileImg: String?,
         messageText: String,
-        messageId: String
+        messageId: String,
+        type: String
     ) {
         if (serverKey.isBlank()) {
             Log.w(TAG, "FCM Server key is blank, skipping FCM Legacy HTTP request.")
             return
         }
 
-        thread {
-            try {
-                val url = URL("https://fcm.googleapis.com/fcm/send")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Authorization", "key=$serverKey")
-                conn.doOutput = true
+        try {
+            val url = URL("https://fcm.googleapis.com/fcm/send")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Authorization", "key=$serverKey")
+            conn.doOutput = true
 
-                val json = JSONObject().apply {
-                    put("to", fcmToken)
-                    put("priority", "high")
+            val json = JSONObject().apply {
+                put("to", fcmToken)
+                put("priority", "high")
 
-                    val notification = JSONObject().apply {
-                        put("title", "New message")
-                        put("body", "$senderName: $messageText")
-                        put("android_channel_id", NotificationHelper.CHANNEL_ID)
-                        put("sound", "default")
-                    }
-                    put("notification", notification)
-
-                    val data = JSONObject().apply {
-                        put("senderId", senderId)
-                        put("senderName", senderName)
-                        put("senderProfileImg", senderProfileImg ?: "")
-                        put("message", messageText)
-                        put("messageId", messageId)
-                        put("type", "CHAT_MESSAGE")
-                    }
-                    put("data", data)
+                val data = JSONObject().apply {
+                    put("senderId", senderId)
+                    put("senderName", senderName)
+                    put("senderProfileImg", senderProfileImg ?: "")
+                    put("message", messageText)
+                    put("messageId", messageId)
+                    put("requestId", messageId)
+                    put("type", type)
                 }
-
-                val writer = OutputStreamWriter(conn.outputStream)
-                writer.write(json.toString())
-                writer.flush()
-                writer.close()
-
-                val responseCode = conn.responseCode
-                Log.d(TAG, "FCM Legacy Push HTTP response code: $responseCode")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending FCM notification payload", e)
+                put("data", data)
             }
+
+            val writer = OutputStreamWriter(conn.outputStream)
+            writer.write(json.toString())
+            writer.flush()
+            writer.close()
+
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                Log.d(TAG, "FCM Legacy Push Notification sent successfully [$responseCode] (type=$type)")
+            } else {
+                val errorText = conn.errorStream?.bufferedReader()?.use { it.readText() }
+                Log.e(TAG, "FCM Legacy Push Failed [$responseCode]: $errorText")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending FCM Legacy notification payload", e)
         }
     }
 }

@@ -187,6 +187,14 @@ class ChatFragment : BaseFragment() {
     }
 
     private fun setupObservers() {
+        // Observe online/offline status to update the online indicator dot
+        _viewModel.onlineStatus.observe(viewLifecycleOwner) { status ->
+            val isOnline = status.equals("Online", ignoreCase = true)
+            binding.onlinetv.setBackgroundResource(
+                if (isOnline) R.drawable.online_indicator else R.drawable.offline_indicator
+            )
+        }
+
         // Observe error messages
         _viewModel.errorMessage.observe(viewLifecycleOwner) { error ->
             error?.let {

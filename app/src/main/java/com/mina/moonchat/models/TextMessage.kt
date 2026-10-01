@@ -1,11 +1,10 @@
 package com.mina.moonchat.models
 
-import com.mina.moonchat.data.dto.MessageStatus
+import com.google.firebase.database.PropertyName
 import com.mina.moonchat.data.dto.MessagesDTO
 import com.mina.moonchat.data.dto.toMessagesDTO
 import com.mina.moonchat.data.dto.toTextMessage
-import com.google.firebase.database.PropertyName
-import java.util.*
+import java.util.Date
 
 enum class MessageDeliveryState {
     PENDING,
@@ -15,34 +14,61 @@ enum class MessageDeliveryState {
     FAILED
 }
 
-data class TextMessage (
+data class TextMessage(
     @get:PropertyName("id")
     @set:PropertyName("id")
     var id: String = "",
 
-    val text: String,
-    override val senderId: String,
-    override val recipientId: String,
-    override val senderName: String,
-    override val recipientName: String,
-    override val date: Date,
-    override val type: String = MessageType.TEXT,
-    override val channelId: String,
-    val status: String = "SENT", // PENDING, SENT, RECEIVED, FAILED, SYNCED
+    @get:PropertyName("text")
+    @set:PropertyName("text")
+    var text: String = "",
+
+    @get:PropertyName("senderId")
+    @set:PropertyName("senderId")
+    override var senderId: String = "",
+
+    @get:PropertyName("recipientId")
+    @set:PropertyName("recipientId")
+    override var recipientId: String = "",
+
+    @get:PropertyName("senderName")
+    @set:PropertyName("senderName")
+    override var senderName: String = "",
+
+    @get:PropertyName("recipientName")
+    @set:PropertyName("recipientName")
+    override var recipientName: String = "",
+
+    @get:PropertyName("date")
+    @set:PropertyName("date")
+    override var date: Date = Date(),
+
+    @get:PropertyName("type")
+    @set:PropertyName("type")
+    override var type: String = MessageType.TEXT,
+
+    @get:PropertyName("channelId")
+    @set:PropertyName("channelId")
+    override var channelId: String = "",
+
+    @get:PropertyName("status")
+    @set:PropertyName("status")
+    var status: String = "SENT",
 
     @get:PropertyName("isRead")
-    val isRead: Boolean = false,
+    @set:PropertyName("isRead")
+    var isRead: Boolean = false,
 
     @get:PropertyName("isDelivered")
-    val isDelivered: Boolean = false
+    @set:PropertyName("isDelivered")
+    var isDelivered: Boolean = false
 ) : Message {
-    constructor() : this("","", "", "", "", "", Date(),"","", "SENT", false, false)
 
     fun isSentBy(currentUserId: String): Boolean = senderId == currentUserId
 
-    fun isPending(): Boolean = status == "PENDING"
+    fun isPending(): Boolean = status.equals("PENDING", ignoreCase = true)
 
-    fun isFailed(): Boolean = status == "FAILED"
+    fun isFailed(): Boolean = status.equals("FAILED", ignoreCase = true)
 
     fun resolveDeliveryState(): MessageDeliveryState {
         return when {
@@ -50,9 +76,6 @@ data class TextMessage (
             isFailed() -> MessageDeliveryState.FAILED
             isRead -> MessageDeliveryState.SEEN
             isDelivered -> MessageDeliveryState.DELIVERED
-            status.equals("PENDING", ignoreCase = true) -> MessageDeliveryState.PENDING
-            status.equals("FAILED", ignoreCase = true) -> MessageDeliveryState.FAILED
-            status.equals("RECEIVED", ignoreCase = true) -> MessageDeliveryState.DELIVERED
             else -> MessageDeliveryState.SENT
         }
     }

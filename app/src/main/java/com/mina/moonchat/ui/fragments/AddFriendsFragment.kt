@@ -1,14 +1,18 @@
 package com.mina.moonchat.ui.fragments
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.button.MaterialButton
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -16,6 +20,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.lottiefiles.dotlottie.core.model.Config
 import com.lottiefiles.dotlottie.core.util.DotLottieSource
 import com.mina.moonchat.adapters.SearchFriendListAdapter
@@ -47,10 +52,14 @@ class AddFriendsFragment : Fragment() {
 
     private lateinit var rvAdapter: SearchFriendListAdapter
     private var presenceListener: ValueEventListener? = null
+    private var requestsListener: ListenerRegistration? = null
+    private var friendsListener: ListenerRegistration? = null
     private var userOnlineStates: Map<String, Boolean> = emptyMap()
     private var searchJob: Job? = null
     private var cachedUsersList: List<User>? = null
     private var cachedExcludedUserIds: Set<String>? = null
+    private val pendingRequestsSet = mutableSetOf<String>()
+    private val friendUserIdsSet = mutableSetOf<String>()
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -70,10 +79,14 @@ class AddFriendsFragment : Fragment() {
             setIconifiedByDefault(false)
         }
 
-        rvAdapter = SearchFriendListAdapter(SearchListener { user ->
-            this.findNavController()
-                .navigate(AddFriendsFragmentDirections.actionAddFriendsFragmentToChatFragment(user))
-        })
+        rvAdapter = SearchFriendListAdapter(
+            clickListener = SearchListener { user ->
+                handleUserItemClick(user)
+            },
+            onAddFriendClicked = { targetUser, button ->
+                sendFriendRequest(targetUser, button)
+            }
+        )
 
         binding.searchResultsRecyclerView.apply {
             setHasFixedSize(true)
@@ -83,7 +96,81 @@ class AddFriendsFragment : Fragment() {
 
         setupLottieAnimation()
         observeUsersPresence()
+        observeSentRequests()
+        observeFriends()
         setupSearch()
+    }
+
+    private fun observeFriends() {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        friendsListener?.remove()
+        friendsListener = db.collection("Users").document(currentUserId).collection("Friends")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val ids = snapshot.documents.map { it.id }.toMutableSet()
+                db.collection("Users").document(currentUserId).get().addOnSuccessListener { userDoc ->
+                    (userDoc.get("friends") as? List<*>)?.forEach { id -> (id as? String)?.let { ids.add(it) } }
+                    friendUserIdsSet.clear()
+                    friendUserIdsSet.addAll(ids)
+                    rvAdapter.friendUserIds = friendUserIdsSet
+                }
+            }
+    }
+
+    private fun handleUserItemClick(targetUser: User) {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        val targetUserId = targetUser.userId.ifEmpty { targetUser.id }
+        if (targetUserId.isEmpty()) return
+
+        // Fast path check from local loaded set
+        if (friendUserIdsSet.contains(targetUserId) || friendUserIdsSet.contains(targetUser.userId) || friendUserIdsSet.contains(targetUser.id)) {
+            findNavController().navigate(
+                AddFriendsFragmentDirections.actionAddFriendsFragmentToChatFragment(targetUser)
+            )
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            var isFriend = false
+            try {
+                val friendDoc = db.collection("Users").document(currentUserId)
+                    .collection("Friends").document(targetUserId).get().await()
+                if (friendDoc.exists()) {
+                    isFriend = true
+                } else {
+                    val userDoc = db.collection("Users").document(currentUserId).get().await()
+                    val friendsList = userDoc.get("friends") as? List<*>
+                    if (friendsList?.contains(targetUserId) == true) {
+                        isFriend = true
+                    } else {
+                        val reqId1 = "${currentUserId}_${targetUserId}"
+                        val reqId2 = "${targetUserId}_${currentUserId}"
+                        val req1 = db.collection("FriendRequests").document(reqId1).get().await()
+                        val req2 = db.collection("FriendRequests").document(reqId2).get().await()
+
+                        if ((req1.exists() && req1.getString("status") == "accepted") ||
+                            (req2.exists() && req2.getString("status") == "accepted")
+                        ) {
+                            isFriend = true
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                if (isFriend) {
+                    findNavController().navigate(
+                        AddFriendsFragmentDirections.actionAddFriendsFragmentToChatFragment(targetUser)
+                    )
+                } else {
+                    Toast.makeText(
+                        requireContext(),
+                        "Friend request must be accepted before starting a chat.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun setupLottieAnimation() {
@@ -118,6 +205,70 @@ class AddFriendsFragment : Fragment() {
         presenceRef.addValueEventListener(presenceListener!!)
     }
 
+    private fun observeSentRequests() {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        requestsListener?.remove()
+        requestsListener = db.collection("FriendRequests")
+            .whereEqualTo("senderId", currentUserId)
+            .whereEqualTo("status", "pending")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val ids = snapshot.documents.mapNotNull { doc ->
+                    doc.getString("receiverId") ?: doc.getString("targetUserId")
+                }.toSet()
+                pendingRequestsSet.clear()
+                pendingRequestsSet.addAll(ids)
+                rvAdapter.pendingUserIds = pendingRequestsSet
+            }
+    }
+
+    private fun sendFriendRequest(targetUser: User, button: MaterialButton) {
+        val currentUserId = mAuth.currentUser?.uid ?: return
+        val targetUserId = targetUser.userId.ifEmpty { targetUser.id }
+        if (targetUserId.isEmpty() || targetUserId == currentUserId) return
+
+        button.isEnabled = false
+        button.text = "Pending"
+        button.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#374151"))
+
+        pendingRequestsSet.add(targetUserId)
+        rvAdapter.pendingUserIds = pendingRequestsSet
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val currentUserDoc = db.collection("Users").document(currentUserId).get().await()
+                val currentUserName = currentUserDoc.getString("displayName")
+                    ?: mAuth.currentUser?.displayName
+                    ?: "MoonChat User"
+                val currentUserPfp = currentUserDoc.getString("profileImg")
+                val currentUserBio = currentUserDoc.getString("bio") ?: "Hey there! I am using MoonChat."
+
+                val requestId = "${currentUserId}_${targetUserId}"
+                val requestData = hashMapOf(
+                    "requestId" to requestId,
+                    "senderId" to currentUserId,
+                    "senderName" to currentUserName,
+                    "senderProfileImg" to currentUserPfp,
+                    "senderBio" to currentUserBio,
+                    "receiverId" to targetUserId,
+                    "status" to "pending",
+                    "timestamp" to System.currentTimeMillis()
+                )
+
+                db.collection("FriendRequests").document(requestId).set(requestData).await()
+                db.collection("Users").document(targetUserId).collection("Requests").document(currentUserId).set(requestData).await()
+
+                com.mina.moonchat.utils.FcmNotificationSender.sendFriendRequestNotification(
+                    recipientId = targetUserId,
+                    senderId = currentUserId,
+                    senderName = currentUserName,
+                    senderProfileImg = currentUserPfp,
+                    requestId = requestId
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun setupSearch() {
         binding.search.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
@@ -146,7 +297,7 @@ class AddFriendsFragment : Fragment() {
             try {
                 val currentUserId = mAuth.currentUser?.uid.orEmpty()
 
-                // 1. Fetch excluded user IDs (current user, existing friends, blocked users, pending requests)
+                // 1. Fetch excluded user IDs (current user, blocked users)
                 val excludedUserIds = getExcludedUserIds(currentUserId)
 
                 // 2. Fetch candidate users from Firestore
@@ -358,39 +509,15 @@ class AddFriendsFragment : Fragment() {
             return@withContext excluded
         }
 
-        // 1. Check currentUser document for array fields (friends, blocked, pendingRequests)
+        // Blocked users
         try {
             val userDoc = db.collection("Users").document(currentUserId).get().await()
             if (userDoc.exists()) {
-                (userDoc.get("friends") as? List<*>)?.forEach { id -> (id as? String)?.let { excluded.add(it) } }
                 (userDoc.get("blocked") as? List<*>)?.forEach { id -> (id as? String)?.let { excluded.add(it) } }
                 (userDoc.get("blockedUsers") as? List<*>)?.forEach { id -> (id as? String)?.let { excluded.add(it) } }
-                (userDoc.get("pendingRequests") as? List<*>)?.forEach { id -> (id as? String)?.let { excluded.add(it) } }
             }
         } catch (_: Exception) {}
 
-        // 2. Friends subcollections & collections
-        try {
-            val userFriends = db.collection("Users").document(currentUserId).collection("Friends").get().await()
-            for (doc in userFriends.documents) {
-                excluded.add(doc.id)
-                doc.getString("friendId")?.let { excluded.add(it) }
-                doc.getString("userId")?.let { excluded.add(it) }
-            }
-        } catch (_: Exception) {}
-
-        try {
-            val topFriends1 = db.collection("Friends").whereEqualTo("userId", currentUserId).get().await()
-            for (doc in topFriends1.documents) {
-                doc.getString("friendId")?.let { excluded.add(it) }
-            }
-            val topFriends2 = db.collection("Friends").whereEqualTo("friendId", currentUserId).get().await()
-            for (doc in topFriends2.documents) {
-                doc.getString("userId")?.let { excluded.add(it) }
-            }
-        } catch (_: Exception) {}
-
-        // 3. Blocked users subcollections & collections
         try {
             val userBlocked = db.collection("Users").document(currentUserId).collection("Blocked").get().await()
             for (doc in userBlocked.documents) {
@@ -407,38 +534,6 @@ class AddFriendsFragment : Fragment() {
             }
         } catch (_: Exception) {}
 
-        // 4. Pending Requests (Sender or Receiver)
-        try {
-            val requestsSender = db.collection("FriendRequests")
-                .whereEqualTo("senderId", currentUserId)
-                .get().await()
-            for (doc in requestsSender.documents) {
-                val status = doc.getString("status") ?: "pending"
-                if (status.equals("pending", ignoreCase = true)) {
-                    doc.getString("receiverId")?.let { excluded.add(it) }
-                    doc.getString("targetUserId")?.let { excluded.add(it) }
-                }
-            }
-
-            val requestsReceiver = db.collection("FriendRequests")
-                .whereEqualTo("receiverId", currentUserId)
-                .get().await()
-            for (doc in requestsReceiver.documents) {
-                val status = doc.getString("status") ?: "pending"
-                if (status.equals("pending", ignoreCase = true)) {
-                    doc.getString("senderId")?.let { excluded.add(it) }
-                }
-            }
-
-            val userRequests = db.collection("Users").document(currentUserId).collection("Requests").get().await()
-            for (doc in userRequests.documents) {
-                excluded.add(doc.id)
-                doc.getString("userId")?.let { excluded.add(it) }
-                doc.getString("senderId")?.let { excluded.add(it) }
-                doc.getString("receiverId")?.let { excluded.add(it) }
-            }
-        } catch (_: Exception) {}
-
         cachedExcludedUserIds = excluded
         excluded
     }
@@ -447,6 +542,10 @@ class AddFriendsFragment : Fragment() {
         super.onDestroyView()
         presenceListener?.let { presenceRef.removeEventListener(it) }
         presenceListener = null
+        requestsListener?.remove()
+        requestsListener = null
+        friendsListener?.remove()
+        friendsListener = null
         searchJob?.cancel()
         searchJob = null
     }

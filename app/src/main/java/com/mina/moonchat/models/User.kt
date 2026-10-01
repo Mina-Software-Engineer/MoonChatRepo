@@ -19,19 +19,3 @@ data class User(
     var id: String = "",
     var fcmToken: String = ""
 ): Parcelable
-
-//converting the Asteroid Domain Model list to Asteroid Entity list
-fun List<User>.asAsteroidEntityModel(): List<AuthUserDTO> {
-    return map {
-        AuthUserDTO(
-        userId = it.userId,
-        username = it.displayName,
-        email = it.email,
-        password = it.password,
-        pfp = it.profileImg,
-        onlineStatus = it.onlineState,
-        bio = it.bio,
-        id = it.id
-        )
-    }
-}
