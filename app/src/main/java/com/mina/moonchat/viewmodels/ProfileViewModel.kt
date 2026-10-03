@@ -37,6 +37,36 @@ class ProfileViewModel(
     private val _tvUserID = MutableLiveData<String>()
     val tvUserID: LiveData<String> = _tvUserID
 
+    private val _tvFriendsCount = MutableLiveData<String>("0 Friends")
+    val tvFriendsCount: LiveData<String> = _tvFriendsCount
+
+    fun fetchFriendsCount() {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("Users")
+            .document(currentUserId)
+            .collection("Friends")
+            .addSnapshotListener { snapshot, error ->
+                val subCollectionCount = snapshot?.documents?.size ?: 0
+
+                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    .collection("Users")
+                    .document(currentUserId)
+                    .get()
+                    .addOnSuccessListener { userDoc ->
+                        val friendsArray = userDoc.get("friends") as? List<*>
+                        val arrayCount = friendsArray?.size ?: 0
+
+                        val finalCount = maxOf(subCollectionCount, arrayCount)
+                        _tvFriendsCount.value = finalCount.toString()
+                    }
+                    .addOnFailureListener {
+                        _tvFriendsCount.value = if (subCollectionCount == 1) "1 Friend" else "$subCollectionCount Friends"
+                    }
+            }
+    }
+
     fun setPfpPhoto(uri: Uri) {
         _pfpImage.value = uri
         uploadPhoto(uri)

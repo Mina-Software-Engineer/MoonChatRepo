@@ -92,6 +92,12 @@ class ProfileFragment : BaseFragment() {
             binding.userId.text = userID
         })
 
+        _viewModel.tvFriendsCount.observe(viewLifecycleOwner, Observer { friendsCountText ->
+            binding.tvFriendsCount.text = friendsCountText
+        })
+
+        _viewModel.fetchFriendsCount()
+
         binding.signOut.setOnClickListener{
             mAuth.signOut()
             _viewModel.deleteCurrentUserFromDB()
