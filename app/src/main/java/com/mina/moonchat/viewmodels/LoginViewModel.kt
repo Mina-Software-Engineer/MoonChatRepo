@@ -14,7 +14,6 @@ import com.mina.moonchat.base.FormState
 
 class LoginViewModel(app: Application) : BaseViewModel(
     app,
-    (app as MoonChat).repository,
     (app as MoonChat).repo
 ) {
 

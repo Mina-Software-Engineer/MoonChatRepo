@@ -13,11 +13,14 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.mina.moonchat.data.dto.AuthUserDTO
 import com.mina.moonchat.data.dto.MessageStatus
 import com.mina.moonchat.data.dto.MessagesDTO
+import com.mina.moonchat.data.dto.UserInfoDTO
 import com.mina.moonchat.data.dto.toMessagesDTO
 import com.mina.moonchat.data.dto.toTextMessage
 import com.mina.moonchat.data.local.UserDatabase
+import com.mina.moonchat.intro_activity.data.Result
 import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.utils.FcmNotificationSender
 import com.mina.moonchat.utils.NotificationHelper
@@ -58,6 +61,47 @@ class UserLocalRepository(
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping network observer: ${e.message}")
         }
+    }
+
+    // Auth & User DAO Methods
+    suspend fun getCurrentUserInfo(): Result<AuthUserDTO> {
+        return try {
+            val user = db.authDao().getCurrentUserInfo()
+            Result.Success(
+                AuthUserDTO(
+                    user.userId,
+                    user.username,
+                    user.email,
+                    user.password,
+                    user.pfp,
+                    user.onlineStatus,
+                    user.bio,
+                    user.id
+                )
+            )
+        } catch (ex: Exception) {
+            Result.Error(ex.localizedMessage ?: "Unknown error")
+        }
+    }
+
+    suspend fun addCurrentUserInfo(currentUser: AuthUserDTO) {
+        db.authDao().addCurrentUserInfo(currentUser)
+    }
+
+    suspend fun deleteCurrentUserInfo() {
+        db.authDao().deleteCurrentUserInfo()
+    }
+
+    suspend fun getUsersInfo(): Result<List<UserInfoDTO>> {
+        return try {
+            Result.Success(db.userDao().getChatsList())
+        } catch (ex: Exception) {
+            Result.Error(ex.localizedMessage ?: "Unknown error")
+        }
+    }
+
+    suspend fun insertNewUser(user: UserInfoDTO) {
+        db.userDao().saveChat(user)
     }
 
     companion object {

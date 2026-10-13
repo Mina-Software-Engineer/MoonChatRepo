@@ -12,9 +12,8 @@ import com.mina.moonchat.base.FormState
 import com.mina.moonchat.models.User
 import kotlin.random.Random
 
-class SignUpViewModel(app: Application): BaseViewModel(
+class SignUpViewModel(app: Application) : BaseViewModel(
     app,
-    (app as MoonChat).repository,
     (app as MoonChat).repo
 ) {
 

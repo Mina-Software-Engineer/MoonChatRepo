@@ -11,7 +11,6 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
-import com.mina.moonchat.data.UserLocalRepository1
 import com.mina.moonchat.data.dto.AuthUserDTO
 import com.mina.moonchat.data.server.UserLocalRepository
 import com.mina.moonchat.models.User
@@ -25,9 +24,9 @@ import kotlin.random.Random
 
 abstract class BaseViewModel(
     val app: Application,
-    val localRepo: UserLocalRepository1,
     val repo: UserLocalRepository
 ) : AndroidViewModel(app) {
+    val localRepo: UserLocalRepository get() = repo
 
     private val storageInstance: FirebaseStorage by lazy {      //creating the main root of storage
         FirebaseStorage.getInstance()

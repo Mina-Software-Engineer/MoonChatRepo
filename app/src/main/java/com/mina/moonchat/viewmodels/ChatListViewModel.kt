@@ -21,7 +21,6 @@ import java.util.Date
 import java.util.Locale
 class ChatListViewModel(app: Application) : BaseViewModel(
     app,
-    (app as MoonChat).repository,
     (app as MoonChat).repo
 ) {
 

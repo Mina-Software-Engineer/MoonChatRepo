@@ -17,10 +17,10 @@ import com.mina.moonchat.utils.CloudinaryImageUploader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class ProfileViewModel(
-    app: Application
-)//, val dataSource: UserDataSource)
-    : BaseViewModel(app, (app as MoonChat).repository, (app as MoonChat).repo) {
+class ProfileViewModel(app: Application) : BaseViewModel(
+    app,
+    (app as MoonChat).repo
+) {
 
     private val _pfpImage = MutableLiveData<Uri?>()
     val pfpImage: LiveData<Uri?> = _pfpImage

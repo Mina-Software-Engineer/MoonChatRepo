@@ -22,7 +22,6 @@ import java.util.Date
 
 class ChatViewModel(app: Application) : BaseViewModel(
     app,
-    (app as MoonChat).repository,
     (app as MoonChat).repo
 ) {
     companion object {
