@@ -3,14 +3,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="80dp"
+    android:layout_height="76dp"
     android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
     android:paddingHorizontal="16dp">
 
     <FrameLayout
         android:id="@+id/avatar_container"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -28,21 +30,25 @@
             android:layout_width="14dp"
             android:layout_height="14dp"
             android:layout_gravity="bottom|end"
-            android:layout_marginEnd="2dp"
-            android:layout_marginBottom="2dp"
+            android:layout_marginEnd="1dp"
+            android:layout_marginBottom="1dp"
             android:background="@drawable/online_indicator"
             android:visibility="visible" />
     </FrameLayout>
 
     <TextView
         android:id="@+id/item_name_textView"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="8dp"
+        android:ellipsize="end"
+        android:maxLines="1"
         android:textColor="@color/chat_list_username_color"
         android:textSize="16sp"
         android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@id/item_time_textView"
         app:layout_constraintStart_toEndOf="@id/avatar_container"
         app:layout_constraintTop_toTopOf="parent"
         tools:text="@tools:sample/full_names" />
@@ -51,8 +57,9 @@
         android:id="@+id/item_lastMessage_textView"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="14dp"
         android:layout_marginTop="4dp"
+        android:layout_marginEnd="8dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/chat_list_last_message_color"
@@ -67,7 +74,7 @@
         android:layout_width="20dp"
         android:layout_height="20dp"
         android:layout_marginStart="6dp"
-        android:contentDescription="Message Status"
+        android:contentDescription="@string/message_status"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/item_lastMessage_textView"
         app:layout_constraintEnd_toEndOf="parent"
@@ -101,5 +108,14 @@
         app:layout_constraintEnd_toEndOf="parent"
         tools:text="3"
         tools:visibility="visible" />
+
+    <View
+        android:id="@+id/divider"
+        android:layout_width="0dp"
+        android:layout_height="1px"
+        android:background="#1E293B"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/avatar_container" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

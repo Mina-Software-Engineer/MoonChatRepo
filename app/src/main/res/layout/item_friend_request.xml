@@ -7,8 +7,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="10dp">
+        android:paddingVertical="12dp">
 
         <de.hdodenhof.circleimageview.CircleImageView
             android:id="@+id/request_circle_imageView"
@@ -24,7 +26,7 @@
             android:id="@+id/text_container"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="14dp"
             android:layout_marginEnd="8dp"
             android:orientation="vertical"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -67,10 +69,10 @@
                 style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                 android:layout_width="wrap_content"
                 android:layout_height="34dp"
-                android:backgroundTint="#6366F1"
+                android:backgroundTint="@color/btn_login"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
-                android:paddingHorizontal="10dp"
+                android:paddingHorizontal="12dp"
                 android:text="Accept"
                 android:textAllCaps="false"
                 android:textColor="@color/white"
@@ -86,7 +88,7 @@
                 android:layout_marginStart="6dp"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
-                android:paddingHorizontal="10dp"
+                android:paddingHorizontal="12dp"
                 android:text="Reject"
                 android:textAllCaps="false"
                 android:textColor="#EF4444"
@@ -96,6 +98,15 @@
                 app:strokeColor="#EF4444"
                 app:strokeWidth="1dp" />
         </LinearLayout>
+
+        <View
+            android:id="@+id/divider"
+            android:layout_width="0dp"
+            android:layout_height="1px"
+            android:background="#1E293B"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/request_circle_imageView" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>

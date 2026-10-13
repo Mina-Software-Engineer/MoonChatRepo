@@ -72,4 +72,15 @@
     <!-- Shimmer -->
     <color name="shimmer_color">#CECFD2</color>
 
+    <!-- Modern Gradients & Glassmorphism Colors -->
+    <color name="indigo_gradient_start">#6366F1</color>
+    <color name="indigo_gradient_end">#4F46E5</color>
+    <color name="emerald_gradient_start">#10B981</color>
+    <color name="emerald_gradient_end">#059669</color>
+    <color name="card_glass_bg">#1A2230</color>
+    <color name="card_glass_border">#2D3748</color>
+    <color name="recipient_bubble_bg">#1E293B</color>
+    <color name="avatar_ring_glow">#34D399</color>
+    <color name="glow_teal">#2DD4BF</color>
+
 </resources>

@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#1F2937"/>
+    <solid android:color="@color/recipient_bubble_bg" />
+    <stroke
+        android:width="1dp"
+        android:color="#334155" />
     <corners
-        android:bottomRightRadius="15dp"
+        android:bottomLeftRadius="4dp"
+        android:bottomRightRadius="18dp"
         android:topLeftRadius="18dp"
-        android:topRightRadius="15dp"/>
-
+        android:topRightRadius="18dp" />
 </shape>

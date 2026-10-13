@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.MoonChat" parent="Theme.MaterialComponents.Light.NoActionBar">
         <!-- Brand Colors -->
         <item name="colorPrimary">@color/primary</item>
@@ -27,6 +27,38 @@
     <style name="CircleImageView" parent="">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="hintTheme" parent="TextAppearance.MaterialComponents.Subtitle2">
+        <item name="android:textColor">@color/white</item>
+    </style>
+
+    <style name="textBox_theme" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="errorTextColor">@color/white</item>
+        <item name="boxStrokeErrorColor">#EF4444</item>
+        <item name="boxStrokeColor">@color/card_glass_border</item>
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+        <item name="hintTextAppearance">@style/hintTheme</item>
+        <item name="android:textColorHint">@color/gray</item>
+        <item name="hintTextColor">@color/white</item>
+        <item name="android:textCursorDrawable">@color/white</item>
+        <item name="counterTextColor">@color/white</item>
+        <item name="startIconTint">@color/white</item>
+        <item name="passwordToggleTint">@color/white</item>
+        <item name="boxBackgroundColor">@color/card_glass_bg</item>
+        <item name="android:layout_marginBottom">10dp</item>
+    </style>
+
+    <style name="buttonTheme" parent="Widget.MaterialComponents.Button">
+        <item name="android:textColor">@color/white</item>
+        <item name="backgroundTint">@color/btn_login</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">
+            @animator/btn_animation
+        </item>
     </style>
 
     <style name="splashScreenTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
