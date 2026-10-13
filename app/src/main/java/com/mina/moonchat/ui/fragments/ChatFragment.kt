@@ -125,7 +125,18 @@ class ChatFragment : BaseFragment() {
     private fun setupRecyclerView() {
         val currentUserId = mAuth.currentUser?.uid ?: return
 
-        messageAdapter = MessageAdapter(currentUserId)
+        messageAdapter = MessageAdapter(currentUserId).apply {
+            setOnMessageClickListener(object : MessageAdapter.OnMessageClickListener {
+                override fun onMessageClick(message: com.mina.moonchat.models.TextMessage) {
+                    if (message.isFailed()) {
+                        _viewModel.retryMessage(message)
+                    }
+                }
+                override fun onRetryClick(message: com.mina.moonchat.models.TextMessage) {
+                    _viewModel.retryMessage(message)
+                }
+            })
+        }
         chatLayoutManager = LinearLayoutManager(requireContext()).apply {
             reverseLayout = true // Newest messages at bottom
             stackFromEnd = false

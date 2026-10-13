@@ -81,7 +81,13 @@ data class MessagesDTO(
     val isRead: Boolean = false,
 
     @ColumnInfo(name = "is_delivered")
-    val isDelivered: Boolean = false
+    val isDelivered: Boolean = false,
+
+    @ColumnInfo(name = "retry_count")
+    val retryCount: Int = 0,
+
+    @ColumnInfo(name = "last_attempt_time")
+    val lastAttemptTime: Long = 0
 )
 
 enum class MessageStatus {
@@ -106,11 +112,18 @@ fun MessagesDTO.toTextMessage(): TextMessage {
         channelId = this.channelID,
         status = this.status.name,
         isRead = this.isRead,
-        isDelivered = this.isDelivered
+        isDelivered = this.isDelivered,
+        retryCount = this.retryCount,
+        lastAttemptTime = this.lastAttemptTime
     )
 }
 
-fun TextMessage.toMessagesDTO(status: MessageStatus = MessageStatus.SENT): MessagesDTO {
+fun TextMessage.toMessagesDTO(defaultStatus: MessageStatus = MessageStatus.SENT): MessagesDTO {
+    val messageStatus = try {
+        if (this.status.isNotBlank()) MessageStatus.valueOf(this.status) else defaultStatus
+    } catch (_: Exception) {
+        defaultStatus
+    }
     return MessagesDTO(
         messageId = this.id,
         messageText = this.text,
@@ -119,11 +132,13 @@ fun TextMessage.toMessagesDTO(status: MessageStatus = MessageStatus.SENT): Messa
         senderName = this.senderName,
         recipientName = this.recipientName,
         messageTime = this.date.time,
-        firebaseTimestamp = this.date.time, // Will be updated with server timestamp
+        firebaseTimestamp = if (this.date.time > 0) this.date.time else System.currentTimeMillis(),
         channelID = this.channelId,
         messageType = this.type,
-        status = status,
+        status = messageStatus,
         isRead = this.isRead,
-        isDelivered = this.isDelivered
+        isDelivered = this.isDelivered,
+        retryCount = this.retryCount,
+        lastAttemptTime = this.lastAttemptTime
     )
 }

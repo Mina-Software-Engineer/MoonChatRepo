@@ -41,9 +41,9 @@ interface MessageDao {
     fun getMessagesPaged(channelId: String): PagingSource<Int, MessagesDTO>
 
     /**
-     * Insert or update message (prevents duplicates)
+     * Insert or update message (prevents duplicates and replaces existing with updated state)
      */
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessagesDTO)
 
     /**

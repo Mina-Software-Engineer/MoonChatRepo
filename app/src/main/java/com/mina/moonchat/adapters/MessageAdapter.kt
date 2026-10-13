@@ -99,6 +99,14 @@ class MessageAdapter(private val currentUserId: String) :
                     )
                 }
 
+                root.setOnClickListener {
+                    if (message.isFailed()) {
+                        onMessageClickListener?.onRetryClick(message) ?: onMessageClickListener?.onMessageClick(message)
+                    } else {
+                        onMessageClickListener?.onMessageClick(message)
+                    }
+                }
+
                 executePendingBindings()
             }
         }
@@ -135,6 +143,9 @@ class MessageAdapter(private val currentUserId: String) :
     // Click listener interface for message interactions (retry, delete, etc.)
     interface OnMessageClickListener {
         fun onMessageClick(message: TextMessage)
+        fun onRetryClick(message: TextMessage) {
+            onMessageClick(message)
+        }
     }
 
     private var onMessageClickListener: OnMessageClickListener? = null

@@ -61,7 +61,10 @@ class ServerSide {
             return
         }
 
-        // Create message data with server timestamp
+        // Preserve original message creation date if set
+        val messageDate = if (message.date.time > 0) message.date else Date()
+
+        // Create message data
         val messageData = hashMapOf(
             "id" to messageKey,
             "text" to message.text,
@@ -69,42 +72,26 @@ class ServerSide {
             "recipientId" to message.recipientId,
             "senderName" to message.senderName,
             "recipientName" to message.recipientName,
-            "date" to Date(), // Use server timestamp
+            "date" to messageDate,
             "type" to message.type,
             "channelId" to channelId,
-            "isRead" to false,
-            "isDelivered" to false
+            "isRead" to message.isRead,
+            "isDelivered" to message.isDelivered
         )
 
-        // Save to sender's path
-        val senderPath = messagesRef
-            .child("Sender: $senderId")
-            .child("ChannelID: $channelId")
-            .child("Messages")
-            .child(messageKey)
+        // Perform root-level atomic multi-location update to RTDB
+        val updates = hashMapOf<String, Any>(
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageKey" to messageData,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageKey" to messageData
+        )
 
-        // Save to recipient's path
-        val recipientPath = messagesRef
-            .child("Sender: $recipientId")
-            .child("ChannelID: $channelId")
-            .child("Messages")
-            .child(messageKey)
-
-        // Execute both writes
-        senderPath.setValue(messageData)
+        messagesRef.updateChildren(updates)
             .addOnSuccessListener {
-                recipientPath.setValue(messageData)
-                    .addOnSuccessListener {
-                        Log.d(TAG, "Message sent successfully: $messageKey")
-                        onSuccess(messageKey)
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to send to recipient path", e)
-                        onError(e)
-                    }
+                Log.d(TAG, "Message sent atomically to RTDB: $messageKey")
+                onSuccess(messageKey)
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to send to sender path", e)
+                Log.e(TAG, "Failed atomic multi-path write for message $messageKey", e)
                 onError(e)
             }
     }
@@ -297,11 +284,14 @@ class ServerSide {
     ) {
         val channelId = getChatChannelId(senderId, recipientId)
         val updates = hashMapOf<String, Any>(
-            "isRead" to isRead,
-            "isDelivered" to isDelivered
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/isRead" to isRead,
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/isDelivered" to isDelivered,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/isRead" to isRead,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/isDelivered" to isDelivered
         )
-        messagesRef.child("Sender: $senderId").child("ChannelID: $channelId").child("Messages").child(messageId).updateChildren(updates)
-        messagesRef.child("Sender: $recipientId").child("ChannelID: $channelId").child("Messages").child(messageId).updateChildren(updates)
+        messagesRef.updateChildren(updates).addOnFailureListener { e ->
+            Log.e(TAG, "Failed atomic status update on Firebase for message $messageId", e)
+        }
     }
 
     /**
@@ -340,7 +330,7 @@ class ServerSide {
     }
 
     /**
-     * Update or create chat channel metadata
+     * Update or create chat channel metadata safely without overwriting newer previews
      */
     fun updateChatChannels(
         senderId: String,
@@ -353,42 +343,47 @@ class ServerSide {
         timestamp: Long = System.currentTimeMillis()
     ) {
         val channelId = getChatChannelId(senderId, recipientId)
+        val newDate = Date(timestamp)
 
-        val senderChannelData = hashMapOf(
-            "recipientId" to recipientId,
-            "recipientName" to recipientName,
-            "profileImg" to recipientProfileImg,
-            "lastMessage" to lastMessage,
-            "lastMessageSenderId" to senderId,
-            "lastMessageRead" to false,
-            "date" to Date(timestamp),
-            "isOnline" to false
-        )
+        fun updateChannelDoc(
+            ownerId: String,
+            otherId: String,
+            otherName: String,
+            otherProfileImg: String?,
+            msgSenderId: String
+        ) {
+            val docRef = firestore
+                .collection("Users")
+                .document(ownerId)
+                .collection("chat channel")
+                .document(channelId)
 
-        val recipientChannelData = hashMapOf(
-            "recipientId" to senderId,
-            "recipientName" to senderName,
-            "profileImg" to senderProfileImg,
-            "lastMessage" to lastMessage,
-            "lastMessageSenderId" to senderId,
-            "lastMessageRead" to false,
-            "date" to Date(timestamp),
-            "isOnline" to false
-        )
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                val existingDate = snapshot.getTimestamp("date")?.toDate()
 
-        firestore
-            .collection("Users")
-            .document(senderId)
-            .collection("chat channel")
-            .document(channelId)
-            .set(senderChannelData, SetOptions.merge())
+                if (existingDate == null || newDate >= existingDate) {
+                    val channelData = hashMapOf(
+                        "recipientId" to otherId,
+                        "recipientName" to otherName,
+                        "profileImg" to otherProfileImg,
+                        "lastMessage" to lastMessage,
+                        "lastMessageSenderId" to msgSenderId,
+                        "lastMessageRead" to false,
+                        "date" to newDate,
+                        "isOnline" to false
+                    )
+                    transaction.set(docRef, channelData, SetOptions.merge())
+                } else {
+                    Log.d(TAG, "Skipping Firestore metadata update for $ownerId: existing date $existingDate is newer than $newDate")
+                }
+            }.addOnFailureListener { e ->
+                Log.e(TAG, "Error updating Firestore chat channel for $ownerId: ${e.message}")
+            }
+        }
 
-        firestore
-            .collection("Users")
-            .document(recipientId)
-            .collection("chat channel")
-            .document(channelId)
-            .set(recipientChannelData, SetOptions.merge())
+        updateChannelDoc(senderId, recipientId, recipientName, recipientProfileImg, senderId)
+        updateChannelDoc(recipientId, senderId, senderName, senderProfileImg, senderId)
     }
 
     fun updateOwnChatChannel(
@@ -400,20 +395,30 @@ class ServerSide {
         timestamp: Long = System.currentTimeMillis()
     ) {
         val channelId = getChatChannelId(ownerUserId, otherUserId)
-        val channelData = hashMapOf(
-            "recipientId" to otherUserId,
-            "recipientName" to otherUserName,
-            "lastMessage" to lastMessage,
-            "lastMessageSenderId" to lastMessageSenderId,
-            "lastMessageRead" to false,
-            "date" to Date(timestamp)
-        )
-
-        firestore
+        val newDate = Date(timestamp)
+        val docRef = firestore
             .collection("Users")
             .document(ownerUserId)
             .collection("chat channel")
             .document(channelId)
-            .set(channelData, SetOptions.merge())
+
+        firestore.runTransaction { transaction ->
+            val snapshot = transaction.get(docRef)
+            val existingDate = snapshot.getTimestamp("date")?.toDate()
+
+            if (existingDate == null || newDate >= existingDate) {
+                val channelData = hashMapOf(
+                    "recipientId" to otherUserId,
+                    "recipientName" to otherUserName,
+                    "lastMessage" to lastMessage,
+                    "lastMessageSenderId" to lastMessageSenderId,
+                    "lastMessageRead" to false,
+                    "date" to newDate
+                )
+                transaction.set(docRef, channelData, SetOptions.merge())
+            }
+        }.addOnFailureListener { e ->
+            Log.e(TAG, "Error updating own chat channel: ${e.message}")
+        }
     }
 }

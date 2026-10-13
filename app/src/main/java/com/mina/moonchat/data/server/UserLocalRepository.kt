@@ -24,6 +24,7 @@ import com.mina.moonchat.intro_activity.data.Result
 import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.utils.FcmNotificationSender
 import com.mina.moonchat.utils.NotificationHelper
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -107,6 +108,23 @@ class UserLocalRepository(
     companion object {
         private const val TAG = "UserLocalRepository"
         private const val PAGE_SIZE = 20
+        private const val MAX_RETRY_LIMIT = 5
+    }
+
+    private val activeSyncingIds = ConcurrentHashMap.newKeySet<String>()
+
+    private fun isPermanentError(error: Exception): Boolean {
+        val message = error.message?.lowercase() ?: ""
+        return message.contains("permission_denied") ||
+               message.contains("permission denied") ||
+               message.contains("unauthorized") ||
+               message.contains("invalid key")
+    }
+
+    private fun calculateBackoffDelay(retryCount: Int): Long {
+        if (retryCount <= 0) return 0L
+        val exponent = minOf(retryCount, 5)
+        return 1000L * (1 shl exponent)
     }
 
     // Track active listeners to prevent duplicates
@@ -117,6 +135,11 @@ class UserLocalRepository(
         val recipientId: String,
         val listener: ChildEventListener
     )
+
+    /**
+     * Generate unique message ID
+     */
+    fun createMessageId(): String = server.createMessageId() ?: java.util.UUID.randomUUID().toString()
 
     /**
      * Generate consistent channel ID
@@ -263,21 +286,54 @@ class UserLocalRepository(
         activeListener = null
     }
 
+    fun mergeMessageDTO(
+        existing: MessagesDTO,
+        incoming: MessagesDTO,
+        isExplicitLocalAction: Boolean = false
+    ): MessagesDTO {
+        val finalIsRead = existing.isRead || incoming.isRead
+        val finalIsDelivered = existing.isDelivered || incoming.isDelivered
+
+        val finalStatus = if (isExplicitLocalAction) {
+            incoming.status
+        } else {
+            when (existing.status) {
+                MessageStatus.SENT, MessageStatus.SYNCED, MessageStatus.RECEIVED -> {
+                    if (incoming.status == MessageStatus.PENDING || incoming.status == MessageStatus.FAILED) {
+                        existing.status
+                    } else {
+                        incoming.status
+                    }
+                }
+                else -> incoming.status
+            }
+        }
+
+        val originalTime = if (existing.messageTime > 0) existing.messageTime else incoming.messageTime
+        val originalFirebaseTimestamp = if (existing.firebaseTimestamp > 0) existing.firebaseTimestamp else incoming.firebaseTimestamp
+
+        return incoming.copy(
+            status = finalStatus,
+            isRead = finalIsRead,
+            isDelivered = finalIsDelivered,
+            messageTime = originalTime,
+            firebaseTimestamp = originalFirebaseTimestamp
+        )
+    }
+
     private fun handleIncomingMessageUpdate(message: TextMessage) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val existing = msgDao.getMessageById(message.id) ?: return@launch
-                
-                // Update local flags from server
-                val updated = existing.copy(
-                    isRead = message.isRead || existing.isRead,
-                    isDelivered = message.isDelivered || existing.isDelivered,
-                    status = if (existing.status == MessageStatus.PENDING || existing.status == MessageStatus.FAILED)
+
+                val incomingDTO = message.toMessagesDTO(
+                    if (existing.status == MessageStatus.PENDING || existing.status == MessageStatus.FAILED)
                         MessageStatus.SENT else existing.status
                 )
-                
-                msgDao.insertAll(listOf(updated))
-                Log.d(TAG, "Message status updated from server: ${message.id}, read=${message.isRead}, delivered=${message.isDelivered}")
+                val merged = mergeMessageDTO(existing, incomingDTO)
+
+                msgDao.insertAll(listOf(merged))
+                Log.d(TAG, "Message status updated from server: ${message.id}, read=${merged.isRead}, delivered=${merged.isDelivered}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling incoming message update: ${e.message}")
             }
@@ -316,28 +372,21 @@ class UserLocalRepository(
                     )
                 }
 
-                // Check if message already exists
-                val existingMessage = msgDao.getMessageById(message.id)
-
-                if (existingMessage != null) {
-                    // Update flags
-                    val updatedDTO = existingMessage.copy(
-                        isRead = finalIsRead,
-                        isDelivered = finalIsDelivered
-                    )
-                    msgDao.insertAll(listOf(updatedDTO))
-                    Log.d(TAG, "Existing message updated: ${message.id}, read=$finalIsRead, delivered=$finalIsDelivered")
-                    return@launch
-                }
-
-                val messageDTO = message.toMessagesDTO(MessageStatus.RECEIVED).copy(
+                val incomingDTO = message.toMessagesDTO(MessageStatus.RECEIVED).copy(
                     channelID = channelId,
                     firebaseTimestamp = message.date.time,
                     isRead = finalIsRead,
                     isDelivered = finalIsDelivered
                 )
 
-                msgDao.insertMessage(messageDTO)
+                val existingMessage = msgDao.getMessageById(message.id)
+                val messageToSave = if (existingMessage != null) {
+                    mergeMessageDTO(existingMessage, incomingDTO)
+                } else {
+                    incomingDTO
+                }
+
+                msgDao.insertMessage(messageToSave)
                 server.updateOwnChatChannel(
                     ownerUserId = currentUserId,
                     otherUserId = message.senderId,
@@ -348,26 +397,28 @@ class UserLocalRepository(
                 )
 
                 // Show notification if user is not in the chat with sender
-                FirebaseFirestore.getInstance().collection("Users").document(message.senderId).get()
-                    .addOnSuccessListener { doc ->
-                        val pfp = doc.getString("profileImg") ?: doc.getString("pfp")
-                        NotificationHelper.showNotification(
-                            messageId = message.id,
-                            senderId = message.senderId,
-                            senderName = message.senderName,
-                            senderProfileImg = pfp,
-                            messageText = message.text
-                        )
-                    }
-                    .addOnFailureListener {
-                        NotificationHelper.showNotification(
-                            messageId = message.id,
-                            senderId = message.senderId,
-                            senderName = message.senderName,
-                            senderProfileImg = null,
-                            messageText = message.text
-                        )
-                    }
+                if (!isChatOpen) {
+                    FirebaseFirestore.getInstance().collection("Users").document(message.senderId).get()
+                        .addOnSuccessListener { doc ->
+                            val pfp = doc.getString("profileImg") ?: doc.getString("pfp")
+                            NotificationHelper.showNotification(
+                                messageId = message.id,
+                                senderId = message.senderId,
+                                senderName = message.senderName,
+                                senderProfileImg = pfp,
+                                messageText = message.text
+                            )
+                        }
+                        .addOnFailureListener {
+                            NotificationHelper.showNotification(
+                                messageId = message.id,
+                                senderId = message.senderId,
+                                senderName = message.senderName,
+                                senderProfileImg = null,
+                                messageText = message.text
+                            )
+                        }
+                }
 
                 Log.d("TAG", "New message saved: ${message.id}")
             } catch (e: Exception) {
@@ -389,74 +440,164 @@ class UserLocalRepository(
             ?: throw IllegalStateException("Failed to generate message ID")
 
         val isOnline = networkObserver.isNetworkConnected()
-        val initialStatus = if (isOnline) MessageStatus.PENDING else MessageStatus.FAILED
+        val initialStatus = MessageStatus.PENDING
 
         val pendingMessage = message.copy(
             id = messageId,
             status = initialStatus.name,
-            isRead = false,
-            isDelivered = false
+            isRead = message.isRead,
+            isDelivered = message.isDelivered,
+            retryCount = message.retryCount,
+            lastAttemptTime = if (message.lastAttemptTime > 0) message.lastAttemptTime else System.currentTimeMillis()
         )
 
-        // 2. Save to Room immediately (optimistic UI)
+        // Save to Room immediately (optimistic UI)
         val pendingDTO = pendingMessage.toMessagesDTO(initialStatus).copy(
             channelID = channelId,
-            firebaseTimestamp = System.currentTimeMillis()
+            firebaseTimestamp = if (pendingMessage.date.time > 0) pendingMessage.date.time else System.currentTimeMillis()
         )
-        msgDao.insertMessage(pendingDTO)
-        Log.d(TAG, "Message saved locally: $messageId, initialStatus=$initialStatus")
+
+        val existing = msgDao.getMessageById(messageId)
+        val messageToSave = if (existing != null) {
+            mergeMessageDTO(existing, pendingDTO, isExplicitLocalAction = true)
+        } else {
+            pendingDTO
+        }
+
+        msgDao.insertMessage(messageToSave)
+        Log.d(TAG, "Message saved locally: $messageId, initialStatus=$initialStatus, isOnline=$isOnline")
 
         if (!isOnline) {
-            Log.w(TAG, "Device is offline. Message $messageId marked as FAILED and queued for auto-resend when reconnected.")
+            Log.w(TAG, "Device is offline. Message $messageId saved as PENDING in queue for auto-resend when reconnected.")
             return
         }
 
-        // 3. Send to Firebase
-        server.sendMessage(
-            message = pendingMessage,
-            onSuccess = { firebaseId ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    msgDao.updateMessageStatus(messageId, MessageStatus.SENT)
-                    Log.d(TAG, "Message marked as SENT: $firebaseId")
+        attemptRemoteSend(pendingMessage, senderProfileImg, recipientProfileImg)
+    }
 
-                    // Update chat channel metadata
-                    server.updateChatChannels(
-                        senderId = pendingMessage.senderId,
-                        senderName = pendingMessage.senderName,
-                        senderProfileImg = senderProfileImg,
-                        recipientId = pendingMessage.recipientId,
-                        recipientName = pendingMessage.recipientName,
-                        recipientProfileImg = recipientProfileImg,
-                        lastMessage = pendingMessage.text
-                    )
+    private fun attemptRemoteSend(
+        message: TextMessage,
+        senderProfileImg: String?,
+        recipientProfileImg: String?
+    ) {
+        val messageId = message.id
+        if (!activeSyncingIds.add(messageId)) {
+            Log.d(TAG, "Message $messageId is already being processed. Skipping concurrent attempt.")
+            return
+        }
 
-                    // Trigger FCM push notification to recipient
-                    FcmNotificationSender.sendNotification(
-                        recipientId = pendingMessage.recipientId,
-                        senderId = pendingMessage.senderId,
-                        senderName = pendingMessage.senderName,
-                        senderProfileImg = senderProfileImg,
-                        messageText = pendingMessage.text,
-                        messageId = messageId
-                    )
-                }
-            },
-            onError = { error ->
-                CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val existing = msgDao.getMessageById(messageId)
+                val currentRetryCount = existing?.retryCount ?: message.retryCount
+
+                if (message.recipientId.isBlank() || message.senderId.isBlank()) {
+                    Log.e(TAG, "Permanent failure: invalid sender or recipient ID for message $messageId")
                     msgDao.updateMessageStatus(messageId, MessageStatus.FAILED)
-                    Log.e(TAG, "Failed to send message: ${error.message}")
+                    activeSyncingIds.remove(messageId)
+                    return@launch
                 }
+
+                server.sendMessage(
+                    message = message,
+                    onSuccess = { firebaseId ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val current = msgDao.getMessageById(messageId)
+                                if (current != null) {
+                                    val sentDTO = current.copy(
+                                        status = MessageStatus.SENT,
+                                        retryCount = 0,
+                                        lastAttemptTime = System.currentTimeMillis()
+                                    )
+                                    msgDao.insertAll(listOf(sentDTO))
+                                } else {
+                                    msgDao.updateMessageStatus(messageId, MessageStatus.SENT)
+                                }
+                                Log.d(TAG, "Message marked as SENT: $firebaseId")
+
+                                // Update chat channel metadata
+                                server.updateChatChannels(
+                                    senderId = message.senderId,
+                                    senderName = message.senderName,
+                                    senderProfileImg = senderProfileImg,
+                                    recipientId = message.recipientId,
+                                    recipientName = message.recipientName,
+                                    recipientProfileImg = recipientProfileImg,
+                                    lastMessage = message.text
+                                )
+
+                                // Trigger FCM push notification to recipient
+                                FcmNotificationSender.sendNotification(
+                                    recipientId = message.recipientId,
+                                    senderId = message.senderId,
+                                    senderName = message.senderName,
+                                    senderProfileImg = senderProfileImg,
+                                    messageText = message.text,
+                                    messageId = messageId
+                                )
+                            } finally {
+                                activeSyncingIds.remove(messageId)
+                            }
+                        }
+                    },
+                    onError = { error ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val current = msgDao.getMessageById(messageId)
+                                val newRetryCount = (current?.retryCount ?: currentRetryCount) + 1
+                                val isPermanent = isPermanentError(error)
+
+                                if (isPermanent || newRetryCount >= MAX_RETRY_LIMIT) {
+                                    Log.e(TAG, "Message $messageId failed permanently or reached max retry limit ($newRetryCount/$MAX_RETRY_LIMIT): ${error.message}")
+                                    if (current != null) {
+                                        val failedDTO = current.copy(
+                                            status = MessageStatus.FAILED,
+                                            retryCount = newRetryCount,
+                                            lastAttemptTime = System.currentTimeMillis()
+                                        )
+                                        msgDao.insertAll(listOf(failedDTO))
+                                    } else {
+                                        msgDao.updateMessageStatus(messageId, MessageStatus.FAILED)
+                                    }
+                                } else {
+                                    Log.w(TAG, "Message $messageId transient send failure (attempt $newRetryCount/$MAX_RETRY_LIMIT): ${error.message}")
+                                    if (current != null) {
+                                        val pendingDTO = current.copy(
+                                            status = MessageStatus.PENDING,
+                                            retryCount = newRetryCount,
+                                            lastAttemptTime = System.currentTimeMillis()
+                                        )
+                                        msgDao.insertAll(listOf(pendingDTO))
+                                    }
+                                }
+                            } finally {
+                                activeSyncingIds.remove(messageId)
+                            }
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                activeSyncingIds.remove(messageId)
+                Log.e(TAG, "Exception during attemptRemoteSend for $messageId: ${e.message}")
             }
-        )
+        }
     }
 
     /**
      * Retry sending a failed message
      */
-    suspend fun retryMessage(message: TextMessage) {
-        msgDao.deleteMessageById(message.id)
-
-        sendMessage(message.copy(status = "PENDING"), null, null)
+    suspend fun retryMessage(
+        message: TextMessage,
+        senderProfileImg: String? = null,
+        recipientProfileImg: String? = null
+    ) {
+        val messageToRetry = message.copy(
+            status = MessageStatus.PENDING.name,
+            retryCount = 0,
+            lastAttemptTime = 0
+        )
+        sendMessage(messageToRetry, senderProfileImg, recipientProfileImg)
     }
 
     /**
@@ -504,15 +645,36 @@ class UserLocalRepository(
     }
 
     /**
-     * Sync pending messages on app startup
+     * Sync pending messages on app startup or network reconnect
      */
     suspend fun syncPendingMessages() {
+        if (!networkObserver.isNetworkConnected()) {
+            Log.d(TAG, "syncPendingMessages skipped: Network is offline")
+            return
+        }
+
         val pendingMessages = msgDao.getPendingMessages()
         Log.d(TAG, "Found ${pendingMessages.size} pending messages to sync")
 
+        val now = System.currentTimeMillis()
+
         pendingMessages.forEach { dto ->
+            if (activeSyncingIds.contains(dto.messageId)) return@forEach
+
+            if (dto.retryCount >= MAX_RETRY_LIMIT) {
+                Log.w(TAG, "Message ${dto.messageId} reached max retry limit (${dto.retryCount}). Marking as FAILED.")
+                msgDao.updateMessageStatus(dto.messageId, MessageStatus.FAILED)
+                return@forEach
+            }
+
+            val backoffDelay = calculateBackoffDelay(dto.retryCount)
+            if (dto.lastAttemptTime > 0 && (now - dto.lastAttemptTime) < backoffDelay) {
+                Log.d(TAG, "Message ${dto.messageId} backing off for ${backoffDelay - (now - dto.lastAttemptTime)}ms")
+                return@forEach
+            }
+
             val message = dto.toTextMessage()
-            retryMessage(message)
+            attemptRemoteSend(message, null, null)
         }
     }
 }

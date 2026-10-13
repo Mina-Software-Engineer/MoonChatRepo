@@ -61,7 +61,15 @@ data class TextMessage(
 
     @get:PropertyName("isDelivered")
     @set:PropertyName("isDelivered")
-    var isDelivered: Boolean = false
+    var isDelivered: Boolean = false,
+
+    @get:PropertyName("retryCount")
+    @set:PropertyName("retryCount")
+    var retryCount: Int = 0,
+
+    @get:PropertyName("lastAttemptTime")
+    @set:PropertyName("lastAttemptTime")
+    var lastAttemptTime: Long = 0
 ) : Message {
 
     fun isSentBy(currentUserId: String): Boolean = senderId == currentUserId
