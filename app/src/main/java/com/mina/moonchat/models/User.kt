@@ -10,6 +10,7 @@ import kotlinx.parcelize.Parcelize
 
 /**
  * Normalized User model supporting bidirectional compatibility with legacy Firestore schemas.
+ * Firebase Authentication is the sole password holder; password is NEVER persisted to Firestore or Room.
  */
 @IgnoreExtraProperties
 @Parcelize
@@ -17,7 +18,7 @@ data class User(
     @get:PropertyName("userId") @set:PropertyName("userId") var userId: String = "",
     @get:PropertyName("displayName") @set:PropertyName("displayName") var displayName: String = "",
     @get:PropertyName("email") @set:PropertyName("email") var email: String = "",
-    @get:PropertyName("password") @set:PropertyName("password") var password: String = "",
+    @get:Exclude @set:Exclude var password: String = "",
     @get:PropertyName("profileImg") @set:PropertyName("profileImg") var profileImg: String? = null,
     @get:PropertyName("onlineState") @set:PropertyName("onlineState") var onlineState: String = "",
     @get:PropertyName("bio") @set:PropertyName("bio") var bio: String = "",
@@ -140,6 +141,7 @@ data class User(
     /**
      * Converts User to a complete Firestore map containing both canonical
      * and legacy compatibility keys for 100% backward/forward compatibility.
+     * Note: Cleartext password is explicitly EXCLUDED to satisfy security guidelines.
      */
     @Exclude
     fun toFirestoreMap(): Map<String, Any?> {
@@ -154,7 +156,6 @@ data class User(
             "username" to resolvedName,
             "name" to resolvedName,
             "email" to email,
-            "password" to password,
             "profileImg" to resolvedPfp,
             "pfp" to resolvedPfp,
             "onlineState" to resolvedStatus,

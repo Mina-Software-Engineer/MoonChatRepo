@@ -5,13 +5,13 @@
     <string name="prompt_password">Password</string>
     <string name="action_sign_in">Sign in or register</string>
     <string name="action_sign_in_short">Sign in</string>
-    <string name="welcome">"Welcome !"</string>
+    <string name="welcome">Welcome !</string>
     <string name="invalid_email">You must enter a valid email address!</string>
     <string name="invalid_password">Password must be > 5 characters</string>
-    <string name="login_failed">"Login failed"</string>
-    <!-- TODO: Remove or change this placeholder text -->
+    <string name="login_failed">Login failed</string>
     <string name="create_new_account">Create Account</string>
     <string name="invalid_Email">Enter a valid email form, ex: example@example.com</string>
+    <string name="invalid_name">Please enter your name.</string>
     <string name="login">Welcome Back!</string>
     <string name="email">Email</string>
     <string name="password">Password</string>
@@ -20,11 +20,30 @@
     <string name="sign_up"><i>Sign up now!</i></string>
     <string name="permission_needed_title">External Storage Permission Needed</string>
     <string name="permission_denied_explanation">You need to grant external storage permission in order to select photo.</string>
-    <!-- TODO: Remove or change this placeholder text -->
     <string name="hello_blank_fragment">Hello blank fragment</string>
     <string name="today">Today</string>
     <string name="message_status">Message Status</string>
     <string name="share">Share</string>
     <string name="back">Back</string>
     <string name="add_friend">Add Friend</string>
+
+    <!-- Password Reset Strings -->
+    <string name="forgot_password">Forgot Password?</string>
+    <string name="reset_password_title">Reset Password</string>
+    <string name="reset_password_instructions">Enter your registered email address to receive a password reset link.</string>
+    <string name="send_reset_link">Send Reset Link</string>
+    <string name="cancel">Cancel</string>
+    <string name="password_reset_neutral_success">If an account exists for that email, a password reset link has been sent. Please check your inbox.</string>
+
+    <!-- Email Verification Strings -->
+    <string name="email_verification_sent_title">Verify Your Email</string>
+    <string name="email_verification_instructions">A verification email has been sent to your email address. Please verify your email before logging in.</string>
+    <string name="email_not_verified_error">Your email is not verified yet. Please check your inbox and verify your email address to continue.</string>
+    <string name="resend_verification_email">Resend Verification Email</string>
+    <string name="verification_email_resent">Verification email resent successfully. Please check your inbox.</string>
+
+    <!-- Error Handling Strings -->
+    <string name="error_network_failure">Network error. Please check your connection and try again.</string>
+    <string name="error_too_many_requests">Too many attempts. Please try again later.</string>
+    <string name="error_generic">An unexpected error occurred. Please try again.</string>
 </resources>
