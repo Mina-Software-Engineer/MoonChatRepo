@@ -3,6 +3,7 @@ package com.mina.moonchat.data.dto
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.mina.moonchat.models.User
 
 @Entity(tableName = "AuthEntity")
 data class AuthUserDTO(
@@ -23,4 +24,26 @@ data class AuthUserDTO(
     var bio: String,
     @ColumnInfo(name = "user_id")
     var id: String
+)
+
+fun User.toAuthUserDTO(): AuthUserDTO = AuthUserDTO(
+    userId = userId,
+    username = getResolvedName(),
+    email = email,
+    password = password,
+    pfp = getResolvedProfileImg(),
+    onlineStatus = getResolvedOnlineState(),
+    bio = bio,
+    id = id
+)
+
+fun AuthUserDTO.toUser(): User = User(
+    userId = userId,
+    displayName = username,
+    email = email,
+    password = password,
+    profileImg = pfp,
+    onlineState = onlineStatus,
+    bio = bio,
+    id = id
 )

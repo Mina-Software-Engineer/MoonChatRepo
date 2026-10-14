@@ -39,35 +39,31 @@ class ChatRemoteMediator(
         return try {
             Log.d(TAG, "Loading: $loadType")
 
-            val loadKey = when (loadType) {
-                LoadType.REFRESH -> {
-                    // Initial load - get the newest messages
-                    null
-                }
+            val (loadTimestamp, loadKey) = when (loadType) {
+                LoadType.REFRESH -> null to null
                 LoadType.PREPEND -> {
-                    // No newer messages via paging (real-time listener handles this)
                     Log.d(TAG, "PREPEND - end of pagination")
                     return MediatorResult.Success(endOfPaginationReached = true)
                 }
                 LoadType.APPEND -> {
-                    // Load older messages - get the oldest message timestamp we have
-                    val lastItem = state.lastItemOrNull()
-                    if (lastItem == null) {
+                    val oldestItem = state.lastItemOrNull()
+                    if (oldestItem == null) {
                         Log.d(TAG, "APPEND - no items, end of pagination")
                         return MediatorResult.Success(endOfPaginationReached = true)
                     }
-                    // Use the oldest message's timestamp for pagination
-                    lastItem.firebaseTimestamp.takeIf { it > 0 } ?: lastItem.messageTime
+                    val ts = oldestItem.firebaseTimestamp.takeIf { it > 0 } ?: oldestItem.messageTime
+                    ts to oldestItem.messageId
                 }
             }
 
-            Log.d(TAG, "Loading from timestamp: $loadKey, pageSize: ${state.config.pageSize}")
+            Log.d(TAG, "Loading from compound boundary: timestamp=$loadTimestamp, key=$loadKey, pageSize=${state.config.pageSize}")
 
-            // Fetch from Firebase using timestamp-based pagination
+            // Fetch from Firebase using compound (timestamp, key) boundary pagination
             val messages = server.getMessagesByPage(
                 currentUserId = currentUserId,
                 recipientId = recipientId,
-                lastTimestamp = loadKey,
+                lastTimestamp = loadTimestamp,
+                lastKey = loadKey,
                 pageSize = state.config.pageSize
             )
 
@@ -76,13 +72,12 @@ class ChatRemoteMediator(
             database.withTransaction {
                 if (loadType == LoadType.REFRESH) {
                     // Optional: Clear old data on refresh
-                    // Uncomment if you want fresh data on pull-to-refresh
-                    // msgDao.clearMessages(channelId)
                 }
 
                 // Convert and save messages
                 val entities = messages.map { msg ->
-                    MessagesDTO(
+                    val existing = msgDao.getMessageById(msg.id)
+                    val fetchedDTO = MessagesDTO(
                         messageId = msg.id,
                         messageText = msg.text,
                         senderId = msg.senderId,
@@ -90,16 +85,23 @@ class ChatRemoteMediator(
                         senderName = msg.senderName,
                         recipientName = msg.recipientName,
                         messageTime = msg.date.time,
-                        firebaseTimestamp = msg.date.time, // Use message date as Firebase timestamp
+                        firebaseTimestamp = msg.date.time,
                         channelID = channelId,
                         messageType = msg.type,
                         status = if (msg.senderId == currentUserId) MessageStatus.SYNCED else MessageStatus.RECEIVED,
                         isRead = msg.isRead,
                         isDelivered = msg.isDelivered
                     )
+                    if (existing != null) {
+                        existing.copy(
+                            isRead = existing.isRead || msg.isRead,
+                            isDelivered = existing.isDelivered || msg.isDelivered
+                        )
+                    } else {
+                        fetchedDTO
+                    }
                 }
 
-                // Use IGNORE strategy to prevent overwriting newer data from real-time listener
                 msgDao.insertAllIgnoreExisting(entities)
                 Log.d("TAG", "Inserted ${entities.size} messages to Room")
             }

@@ -1,6 +1,7 @@
 package com.mina.moonchat.ui.activities
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -8,9 +9,8 @@ import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import android.content.Intent
-import androidx.navigation.fragment.NavHostFragment
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.NavHostFragment
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
@@ -22,6 +22,7 @@ import com.mina.moonchat.R
 import com.mina.moonchat.application.MoonChat
 import com.mina.moonchat.databinding.ActivityMainBinding
 import com.mina.moonchat.models.User
+import com.mina.moonchat.models.toNormalizedUser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -77,7 +78,7 @@ class MainActivity : AppCompatActivity() {
 
         firestore.collection("Users").document(senderId).get()
             .addOnSuccessListener { doc ->
-                val user = doc.toObject(User::class.java) ?: User(
+                val user = doc.toNormalizedUser() ?: User(
                     userId = senderId,
                     displayName = senderName,
                     id = senderId
@@ -159,8 +160,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateFcmToken(token: String) {
         val currentUserId = mAuth.currentUser?.uid ?: return
+        val updates = mapOf(
+            "fcmToken" to token,
+            "token" to token
+        )
         firestore.collection("Users").document(currentUserId)
-            .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
+            .set(updates, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
                 Log.d("FCM", "FCM Token updated in Firestore")
             }
@@ -192,7 +197,7 @@ class MainActivity : AppCompatActivity() {
                 userPresenceRef.onDisconnect().setValue(offlineState)
                 userPresenceRef.setValue(onlineState)
                 firestore.document("Users/$currentUserId").set(
-                    mapOf("onlineState" to "Online"),
+                    mapOf("onlineState" to "Online", "onlineStatus" to "Online"),
                     com.google.firebase.firestore.SetOptions.merge()
                 )
             }
@@ -212,7 +217,7 @@ class MainActivity : AppCompatActivity() {
 
         presenceRootRef.child(currentUserId).setValue(presenceState)
         firestore.document("Users/$currentUserId").set(
-            mapOf("onlineState" to state),
+            mapOf("onlineState" to state, "onlineStatus" to state),
             com.google.firebase.firestore.SetOptions.merge()
         )
     }

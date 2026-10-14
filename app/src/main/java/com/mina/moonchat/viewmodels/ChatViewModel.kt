@@ -32,8 +32,13 @@ class ChatViewModel(app: Application) : BaseViewModel(
     private val presenceRef: DatabaseReference by lazy {
         FirebaseDatabase.getInstance().getReference("Users states")
     }
+
+    private var observedPresenceRef: DatabaseReference? = null
     private var recipientPresenceListener: ValueEventListener? = null
+
+    private var observedTypingRef: DatabaseReference? = null
     private var recipientTypingListener: ValueEventListener? = null
+
     private var lastTypingResetJob: Job? = null
 
     // UI State
@@ -87,14 +92,22 @@ class ChatViewModel(app: Application) : BaseViewModel(
         }
         stopObservingRecipientPresence()
         stopObservingRecipientTyping()
+        currentRecipientId = null
+        _recipientTyping.postValue(false)
     }
 
     fun observeRecipientPresence(recipientId: String) {
         stopObservingRecipientPresence()
-        observeRecipientTyping(recipientId)
+        stopObservingRecipientTyping()
+
+        currentRecipientId = recipientId
+
+        val targetRef = presenceRef.child(recipientId)
+        observedPresenceRef = targetRef
 
         recipientPresenceListener = object : ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                if (currentRecipientId != recipientId) return
                 val state = snapshot.child("state").getValue(String::class.java)
                     ?: snapshot.getValue(String::class.java)
                     ?: "Offline"
@@ -106,13 +119,21 @@ class ChatViewModel(app: Application) : BaseViewModel(
             }
         }
 
-        presenceRef.child(recipientId).addValueEventListener(recipientPresenceListener!!)
+        targetRef.addValueEventListener(recipientPresenceListener!!)
+        observeRecipientTyping(recipientId)
     }
 
     private fun stopObservingRecipientPresence() {
-        val recipientId = currentRecipientId ?: return
-        val listener = recipientPresenceListener ?: return
-        presenceRef.child(recipientId).removeEventListener(listener)
+        val ref = observedPresenceRef
+        val listener = recipientPresenceListener
+        if (ref != null && listener != null) {
+            try {
+                ref.removeEventListener(listener)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing presence listener: ${e.message}")
+            }
+        }
+        observedPresenceRef = null
         recipientPresenceListener = null
     }
 
@@ -120,9 +141,11 @@ class ChatViewModel(app: Application) : BaseViewModel(
         stopObservingRecipientTyping()
         val currentUserId = mAuth.currentUser?.uid ?: return
         val typingRef = FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId).child(recipientId)
+        observedTypingRef = typingRef
 
         recipientTypingListener = object : ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                if (currentRecipientId != recipientId) return
                 val isTyping = snapshot.getValue(Boolean::class.java) ?: false
                 _recipientTyping.postValue(isTyping)
             }
@@ -135,10 +158,16 @@ class ChatViewModel(app: Application) : BaseViewModel(
     }
 
     private fun stopObservingRecipientTyping() {
-        val currentUserId = mAuth.currentUser?.uid ?: return
-        val recipientId = currentRecipientId ?: return
-        val listener = recipientTypingListener ?: return
-        FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId).child(recipientId).removeEventListener(listener)
+        val ref = observedTypingRef
+        val listener = recipientTypingListener
+        if (ref != null && listener != null) {
+            try {
+                ref.removeEventListener(listener)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing typing listener: ${e.message}")
+            }
+        }
+        observedTypingRef = null
         recipientTypingListener = null
     }
 

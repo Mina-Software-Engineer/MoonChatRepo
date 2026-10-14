@@ -2,18 +2,20 @@ package com.mina.moonchat.viewmodels
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.mina.moonchat.application.MoonChat
 import com.mina.moonchat.base.BaseViewModel
 import com.mina.moonchat.data.dto.AuthUserDTO
 import com.mina.moonchat.intro_activity.data.Result
 import com.mina.moonchat.utils.CloudinaryImageUploader
+import com.mina.moonchat.utils.FriendshipDataMigration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -43,28 +45,16 @@ class ProfileViewModel(app: Application) : BaseViewModel(
     fun fetchFriendsCount() {
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
 
-        com.google.firebase.firestore.FirebaseFirestore.getInstance()
-            .collection("Users")
-            .document(currentUserId)
-            .collection("Friends")
-            .addSnapshotListener { snapshot, error ->
-                val subCollectionCount = snapshot?.documents?.size ?: 0
-
-                com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                    .collection("Users")
-                    .document(currentUserId)
-                    .get()
-                    .addOnSuccessListener { userDoc ->
-                        val friendsArray = userDoc.get("friends") as? List<*>
-                        val arrayCount = friendsArray?.size ?: 0
-
-                        val finalCount = maxOf(subCollectionCount, arrayCount)
-                        _tvFriendsCount.value = finalCount.toString()
-                    }
-                    .addOnFailureListener {
-                        _tvFriendsCount.value = if (subCollectionCount == 1) "1 Friend" else "$subCollectionCount Friends"
-                    }
+        viewModelScope.launch(Dispatchers.IO) {
+            val confirmedFriendIds = FriendshipDataMigration.fetchConfirmedFriendIds(
+                FirebaseFirestore.getInstance(),
+                currentUserId
+            )
+            val count = confirmedFriendIds.size
+            launch(Dispatchers.Main) {
+                _tvFriendsCount.value = if (count == 1) "1 Friend" else "$count Friends"
             }
+        }
     }
 
     fun setPfpPhoto(uri: Uri) {
@@ -91,7 +81,13 @@ class ProfileViewModel(app: Application) : BaseViewModel(
                     userId = currentUserId
                 )
 
-                currentUserDocRef.update(mapOf("profileImg" to uploadedImageUrl))
+                val imageUpdates = mapOf(
+                    "profileImg" to uploadedImageUrl,
+                    "pfp" to uploadedImageUrl,
+                    "profilePic" to uploadedImageUrl
+                )
+
+                currentUserDocRef.update(imageUpdates)
                     .addOnSuccessListener {
                         _pfpImage.value = uploadedImageUrl.toUri()
                         addUserToDB()
@@ -119,7 +115,7 @@ class ProfileViewModel(app: Application) : BaseViewModel(
         }
     }
 
-    /** 3) Retrieving photo from local storage*/
+    /** Retrieving photo from local storage */
     fun getCurrentUserFromDB() {
         viewModelScope.launch {
             val result = localRepo.getCurrentUserInfo()
@@ -134,18 +130,15 @@ class ProfileViewModel(app: Application) : BaseViewModel(
                 _tvUserID.value = currentUser.id
 
             } else if (result is Result.Error) {
-
                 Toast.makeText(
                     app.applicationContext,
-                    "Theres was error getting image from DB: ${result.exception}",
+                    "There was error getting user info from DB: ${result.exception}",
                     Toast.LENGTH_SHORT
                 ).show()
                 return@launch
-
             }
         }
     }
-
 
     fun updateCurrentUserInfo(view: String, string: String) {
         val updatedInfo = mutableMapOf<String, Any>()
@@ -153,6 +146,8 @@ class ProfileViewModel(app: Application) : BaseViewModel(
         when (view) {
             "name" -> {
                 updatedInfo["displayName"] = string
+                updatedInfo["username"] = string
+                updatedInfo["name"] = string
                 currentUserDocRef.update(updatedInfo)
                 _tvName.value = string
                 addUserToDB()

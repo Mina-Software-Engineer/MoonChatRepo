@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.Query
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
 class ChatListViewModel(app: Application) : BaseViewModel(
     app,
     (app as MoonChat).repo
@@ -27,10 +30,18 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
     private val presenceRef by lazy { FirebaseDatabase.getInstance().getReference("Users states") }
     private val messagesRootRef by lazy { FirebaseDatabase.getInstance().getReference("Message") }
+
     private var chatListListener: ListenerRegistration? = null
+
+    private var observedPresenceRef: DatabaseReference? = null
     private var presenceListener: ValueEventListener? = null
+
+    private var observedTypingRef: DatabaseReference? = null
     private var typingStatusListener: ValueEventListener? = null
+
+    private var observedLastMessagesRef: Query? = null
     private var lastMessageListener: ValueEventListener? = null
+
     private var latestChatDocuments: List<com.google.firebase.firestore.DocumentSnapshot> = emptyList()
     private var userOnlineStates: Map<String, Boolean> = emptyMap()
     private var typingUsersMap: Map<String, Boolean> = emptyMap()
@@ -66,9 +77,11 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     }
 
     private fun observeUsersPresence() {
-        presenceListener?.let { presenceRef.removeEventListener(it) }
+        stopObservingUsersPresence()
+        observedPresenceRef = presenceRef
+
         presenceListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+            override fun onDataChange(snapshot: DataSnapshot) {
                 userOnlineStates = snapshot.children.associate { child ->
                     val isOnline = child.child("state").getValue(String::class.java)
                         ?.equals("Online", ignoreCase = true) == true
@@ -83,11 +96,21 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         presenceRef.addValueEventListener(presenceListener!!)
     }
 
+    private fun stopObservingUsersPresence() {
+        presenceListener?.let { listener ->
+            observedPresenceRef?.removeEventListener(listener)
+        }
+        presenceListener = null
+        observedPresenceRef = null
+    }
+
     private fun observeTypingStatuses() {
+        stopObservingTypingStatuses()
+
         val currentUserId = mAuth.currentUser?.uid ?: return
         val typingRef = FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId)
+        observedTypingRef = typingRef
 
-        typingStatusListener?.let { typingRef.removeEventListener(it) }
         typingStatusListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 typingUsersMap = snapshot.children.associate { child ->
@@ -101,11 +124,21 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         typingRef.addValueEventListener(typingStatusListener!!)
     }
 
+    private fun stopObservingTypingStatuses() {
+        typingStatusListener?.let { listener ->
+            observedTypingRef?.removeEventListener(listener)
+        }
+        typingStatusListener = null
+        observedTypingRef = null
+    }
+
     private fun observeLastMessages() {
+        stopObservingLastMessages()
+
         val currentUserId = mAuth.currentUser?.uid ?: return
         val userMessagesRef = messagesRootRef.child("Sender: $currentUserId")
+        observedLastMessagesRef = userMessagesRef
 
-        lastMessageListener?.let { userMessagesRef.removeEventListener(it) }
         lastMessageListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val tempLastMessages = mutableMapOf<String, LastMessagePreview>()
@@ -130,7 +163,6 @@ class ChatListViewModel(app: Application) : BaseViewModel(
 
                         val fullMsg = msg.copy(isRead = msgIsRead, isDelivered = msgIsDelivered)
 
-                        // Count unread messages that came from the other person
                         if (fullMsg.senderId != currentUserId && !fullMsg.isRead) {
                             unreadCount++
                         }
@@ -160,6 +192,14 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         }
 
         userMessagesRef.addValueEventListener(lastMessageListener!!)
+    }
+
+    private fun stopObservingLastMessages() {
+        lastMessageListener?.let { listener ->
+            observedLastMessagesRef?.removeEventListener(listener)
+        }
+        lastMessageListener = null
+        observedLastMessagesRef = null
     }
 
     private fun publishChats() {
@@ -219,15 +259,12 @@ class ChatListViewModel(app: Application) : BaseViewModel(
 
     override fun onCleared() {
         chatListListener?.remove()
-        presenceListener?.let { presenceRef.removeEventListener(it) }
-        mAuth.currentUser?.uid?.let { currentUserId ->
-            typingStatusListener?.let {
-                FirebaseDatabase.getInstance().getReference("typingStatus").child(currentUserId).removeEventListener(it)
-            }
-            lastMessageListener?.let {
-                messagesRootRef.child("Sender: $currentUserId").removeEventListener(it)
-            }
-        }
+        chatListListener = null
+
+        stopObservingUsersPresence()
+        stopObservingTypingStatuses()
+        stopObservingLastMessages()
+
         super.onCleared()
     }
 
@@ -237,13 +274,4 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         val status: String = "",
         val senderId: String = ""
     )
-
-    private inline fun <T, R : Any> Iterable<T>.associateNotNull(transform: (T) -> Pair<String, R>?): Map<String, R> {
-        val destination = mutableMapOf<String, R>()
-        for (element in this) {
-            val pair = transform(element) ?: continue
-            destination[pair.first] = pair.second
-        }
-        return destination
-    }
 }

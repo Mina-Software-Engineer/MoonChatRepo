@@ -9,11 +9,13 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
-import com.mina.moonchat.data.dto.AuthUserDTO
+import com.mina.moonchat.data.dto.toAuthUserDTO
 import com.mina.moonchat.data.server.UserLocalRepository
 import com.mina.moonchat.models.User
+import com.mina.moonchat.models.toNormalizedUser
 import com.mina.moonchat.utils.SingleLiveEvent
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -28,29 +30,23 @@ abstract class BaseViewModel(
 ) : AndroidViewModel(app) {
     val localRepo: UserLocalRepository get() = repo
 
-    private val storageInstance: FirebaseStorage by lazy {      //creating the main root of storage
+    private val storageInstance: FirebaseStorage by lazy {
         FirebaseStorage.getInstance()
     }
 
-    //creating a reference object to Storage
     private val currentUserStorageRef: StorageReference
-        //creating a new node that is the userID
         get() = storageInstance.reference.child(FirebaseAuth.getInstance().currentUser?.uid.toString())
 
     private val firestoreInstance: FirebaseFirestore by lazy {
         FirebaseFirestore.getInstance()
     }
 
-    //creating a reference object to Firestore Database
     val currentUserDocRef: DocumentReference
-        //creating a path to users/uid
         get() = firestoreInstance.document("Users/${FirebaseAuth.getInstance().currentUser?.uid.toString()}")
 
-    val mAuth: FirebaseAuth by lazy {       //instead of typing val mAuth: FirebaseAuth? = null
-        FirebaseAuth.getInstance()                  //                      mAuth = FirebaseAuth.getInstance()
+    val mAuth: FirebaseAuth by lazy {
+        FirebaseAuth.getInstance()
     }
-
-
 
     val _form = MutableLiveData<FormState>()
     val formState: LiveData<FormState> = _form
@@ -61,35 +57,12 @@ abstract class BaseViewModel(
     val navigationCommand: SingleLiveEvent<NavigationCommand> = SingleLiveEvent()
     val progressBar: SingleLiveEvent<Boolean> = SingleLiveEvent()
 
-
-
-    //adding current user info to the database
+    // Adding current user info to the local Room database
     fun addUserToDB() {
         getCurrentUserInfo { user ->
-
-            //val pfp = storageInstance.getReference(user.profileImg!!)
-
-            /*Toast.makeText(
-                app.applicationContext,
-                "pfp is: $pfp",
-                Toast.LENGTH_SHORT
-            ).show()*/
-
             viewModelScope.launch {
-                localRepo.addCurrentUserInfo(
-                    AuthUserDTO(
-                        user.userId,
-                        user.displayName,
-                        user.email,
-                        user.password,
-                        user.profileImg,
-                        user.onlineState,
-                        user.bio,
-                        user.id
-                    )
-                )
+                localRepo.addCurrentUserInfo(user.toAuthUserDTO())
             }
-
         }
     }
 
@@ -104,8 +77,13 @@ abstract class BaseViewModel(
 
         currentUserDocRef.get()
             .addOnSuccessListener { snapshot ->
-                val existingUser = snapshot.toObject(User::class.java)
+                val existingUser = snapshot.toNormalizedUser()
                 if (snapshot.exists() && existingUser != null) {
+                    // Transparent in-place document migration on Firestore & local DB
+                    currentUserDocRef.set(existingUser.toFirestoreMap(), SetOptions.merge())
+                    viewModelScope.launch {
+                        localRepo.addCurrentUserInfo(existingUser.toAuthUserDTO())
+                    }
                     onComplete(existingUser)
                     return@addOnSuccessListener
                 }
@@ -126,8 +104,13 @@ abstract class BaseViewModel(
                     id = "#${displayName.replace(" ", "")}$randomNum"
                 )
 
-                currentUserDocRef.set(recoveredUser)
-                    .addOnSuccessListener { onComplete(recoveredUser) }
+                currentUserDocRef.set(recoveredUser.toFirestoreMap(), SetOptions.merge())
+                    .addOnSuccessListener {
+                        viewModelScope.launch {
+                            localRepo.addCurrentUserInfo(recoveredUser.toAuthUserDTO())
+                        }
+                        onComplete(recoveredUser)
+                    }
                     .addOnFailureListener { onComplete(null) }
             }
             .addOnFailureListener {
@@ -135,11 +118,10 @@ abstract class BaseViewModel(
             }
     }
 
-    //getting current user info from the server
+    // Getting current user info from the server
     fun getCurrentUserInfo(onComplete: (User) -> Unit) {
         ensureCurrentUserDocument { user ->
             user?.let(onComplete)
         }
     }
-
 }

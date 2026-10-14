@@ -97,18 +97,19 @@ class ServerSide {
     }
 
     /**
-     * Get messages by page using timestamp-based pagination
-     * This is more reliable than key-based pagination
+     * Get messages by page using compound (timestamp, key) boundary pagination
+     * This avoids skipping or duplicating messages when equal timestamps exist
      */
     suspend fun getMessagesByPage(
         currentUserId: String,
         recipientId: String,
-        lastTimestamp: Long?, // Use timestamp instead of key for pagination
+        lastTimestamp: Long?,
+        lastKey: String? = null,
         pageSize: Int
     ): List<TextMessage> = suspendCoroutine { continuation ->
         val channelId = getChatChannelId(currentUserId, recipientId)
 
-        val query = if (lastTimestamp == null || lastTimestamp == 0L) {
+        val query = if (lastTimestamp == null || lastTimestamp == 0L || lastKey.isNullOrBlank()) {
             // First load - get the most recent messages
             messagesRef
                 .child("Sender: $currentUserId")
@@ -117,14 +118,14 @@ class ServerSide {
                 .orderByChild("date")
                 .limitToLast(pageSize)
         } else {
-            // Load older messages (before the last timestamp)
+            // Load older messages (at or before compound boundary)
             messagesRef
                 .child("Sender: $currentUserId")
                 .child("ChannelID: $channelId")
                 .child("Messages")
                 .orderByChild("date")
-                .endBefore(lastTimestamp.toDouble())
-                .limitToLast(pageSize)
+                .endAt(lastTimestamp.toDouble(), lastKey)
+                .limitToLast(pageSize + 1)
         }
 
         query.addListenerForSingleValueEvent(object : ValueEventListener {
@@ -133,12 +134,16 @@ class ServerSide {
                 for (messageSnapshot in snapshot.children) {
                     messageSnapshot.getValue(TextMessage::class.java)?.let { message ->
                         message.id = messageSnapshot.key ?: ""
-                        messages.add(message)
+                        // Deduplicate boundary cursor row if returned
+                        if (message.id != lastKey) {
+                            messages.add(message)
+                        }
                     }
                 }
                 // Sort by date ascending for display
                 messages.sortBy { it.date.time }
-                continuation.resume(messages)
+                val result = if (messages.size > pageSize) messages.takeLast(pageSize) else messages
+                continuation.resume(result)
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -198,16 +203,22 @@ class ServerSide {
         }
     }
 
+    data class MessageListenerHandle(
+        val query: com.google.firebase.database.Query,
+        val listener: ChildEventListener
+    )
+
     /**
-     * Legacy listener method for compatibility
+     * Listen for new messages returning a handle holding the exact query and listener
+     * for accurate lifecycle cleanup.
      */
-    fun listenForNewMessages(
+    fun listenForNewMessagesHandle(
         currentUserId: String,
         recipientId: String,
         fromTimestamp: Long = 0,
         onMessageChanged: (TextMessage) -> Unit = {},
         onNewMessage: (TextMessage) -> Unit
-    ): ChildEventListener {
+    ): MessageListenerHandle {
         val channelId = getChatChannelId(currentUserId, recipientId)
 
         val query = messagesRef
@@ -238,11 +249,41 @@ class ServerSide {
         }
 
         query.addChildEventListener(listener)
-        return listener
+        return MessageListenerHandle(query, listener)
     }
 
     /**
-     * Remove message listener
+     * Legacy listener method for compatibility
+     */
+    fun listenForNewMessages(
+        currentUserId: String,
+        recipientId: String,
+        fromTimestamp: Long = 0,
+        onMessageChanged: (TextMessage) -> Unit = {},
+        onNewMessage: (TextMessage) -> Unit
+    ): ChildEventListener {
+        return listenForNewMessagesHandle(
+            currentUserId = currentUserId,
+            recipientId = recipientId,
+            fromTimestamp = fromTimestamp,
+            onMessageChanged = onMessageChanged,
+            onNewMessage = onNewMessage
+        ).listener
+    }
+
+    /**
+     * Remove message listener using exact query handle
+     */
+    fun removeMessageListener(handle: MessageListenerHandle) {
+        try {
+            handle.query.removeEventListener(handle.listener)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to remove message listener: ${e.message}")
+        }
+    }
+
+    /**
+     * Legacy remove message listener
      */
     fun removeMessageListener(
         currentUserId: String,

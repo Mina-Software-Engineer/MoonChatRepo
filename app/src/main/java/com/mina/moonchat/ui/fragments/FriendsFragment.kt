@@ -12,7 +12,6 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.mina.moonchat.adapters.FriendListItem
@@ -21,6 +20,8 @@ import com.mina.moonchat.adapters.SearchListener
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentFriendsBinding
 import com.mina.moonchat.models.User
+import com.mina.moonchat.models.toNormalizedUser
+import com.mina.moonchat.utils.FriendshipDataMigration
 import com.mina.moonchat.viewmodels.FriendsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -124,11 +125,7 @@ class FriendsFragment : BaseFragment() {
 
             val documents = value?.documents ?: emptyList()
             cachedUsers = documents.mapNotNull { doc ->
-                val user = doc.toObject(User::class.java) ?: return@mapNotNull null
-                if (user.userId.isEmpty()) {
-                    user.userId = doc.id
-                }
-                user
+                doc.toNormalizedUser()
             }
             updateFriendsList()
         }
@@ -174,20 +171,14 @@ class FriendsFragment : BaseFragment() {
                 db.collection("FriendRequests").document(request.requestId).update("status", "accepted")
                 db.collection("Users").document(currentUserId).collection("Requests").document(senderId).delete()
 
-                val time = System.currentTimeMillis()
-                db.collection("Users").document(currentUserId).collection("Friends").document(senderId)
-                    .set(mapOf("friendId" to senderId, "addedAt" to time))
-                db.collection("Users").document(senderId).collection("Friends").document(currentUserId)
-                    .set(mapOf("friendId" to currentUserId, "addedAt" to time))
-
-                db.collection("Users").document(currentUserId).update("friends", FieldValue.arrayUnion(senderId))
-                db.collection("Users").document(senderId).update("friends", FieldValue.arrayUnion(currentUserId))
+                FriendshipDataMigration.reconcileAndMigrateFriendships(db, currentUserId)
 
                 val currentUserDoc = db.collection("Users").document(currentUserId).get().await()
                 val currentUserName = currentUserDoc.getString("displayName")
+                    ?: currentUserDoc.getString("username")
                     ?: mAuth.currentUser?.displayName
                     ?: "MoonChat User"
-                val currentUserPfp = currentUserDoc.getString("profileImg")
+                val currentUserPfp = currentUserDoc.getString("profileImg") ?: currentUserDoc.getString("pfp")
 
                 com.mina.moonchat.utils.FcmNotificationSender.sendFriendRequestAcceptedNotification(
                     recipientId = senderId,
@@ -220,21 +211,13 @@ class FriendsFragment : BaseFragment() {
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
 
-                val ids = snapshot.documents.map { it.id }.toMutableSet()
-
-                db.collection("Users").document(currentUserId).get()
-                    .addOnSuccessListener { userDoc ->
-                        val friendsArray = userDoc.get("friends") as? List<*>
-                        friendsArray?.forEach { id ->
-                            (id as? String)?.let { ids.add(it) }
-                        }
-                        friendUserIdsSet = ids
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val reconciledIds = FriendshipDataMigration.reconcileAndMigrateFriendships(db, currentUserId)
+                    friendUserIdsSet = reconciledIds
+                    launch(Dispatchers.Main) {
                         updateFriendsList()
                     }
-                    .addOnFailureListener {
-                        friendUserIdsSet = ids
-                        updateFriendsList()
-                    }
+                }
             }
     }
 

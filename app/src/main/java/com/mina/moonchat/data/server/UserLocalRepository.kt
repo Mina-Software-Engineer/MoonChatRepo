@@ -7,10 +7,10 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.Query
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.mina.moonchat.data.dto.AuthUserDTO
@@ -27,10 +27,10 @@ import com.mina.moonchat.utils.NotificationHelper
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class UserLocalRepository(
     private val db: UserDatabase,
@@ -38,14 +38,19 @@ class UserLocalRepository(
 ) {
     private val msgDao = db.messageDao()
     private val mAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val networkObserver by lazy {
         com.mina.moonchat.utils.NetworkObserver(com.mina.moonchat.application.MoonChat.instance) {
             Log.d(TAG, "Internet connection restored, auto-syncing queued pending/failed messages...")
-            CoroutineScope(Dispatchers.IO).launch {
+            repositoryScope.launch {
                 syncPendingMessages()
             }
         }
+    }
+
+    init {
+        startNetworkObserver()
     }
 
     fun startNetworkObserver() {
@@ -127,13 +132,16 @@ class UserLocalRepository(
         return 1000L * (1 shl exponent)
     }
 
-    // Track active listeners to prevent duplicates
+    // Track active listeners to prevent duplicates and race conditions
+    @Volatile
     private var activeListener: ActiveListener? = null
+    @Volatile
+    private var requestedRecipientId: String? = null
 
     private data class ActiveListener(
         val currentUserId: String,
         val recipientId: String,
-        val listener: ChildEventListener
+        val handle: ServerSide.MessageListenerHandle
     )
 
     /**
@@ -177,23 +185,23 @@ class UserLocalRepository(
 
     /**
      * Activate real-time sync for new messages
-     * Should be called when entering a chat
+     * Synchronously sets requestedRecipientId and cleans up previous listener
      */
     fun activateRealtimeSync(currentUserId: String, recipientId: String) {
-        // Remove existing listener if any
-        removeActiveListener()
+        synchronized(this) {
+            requestedRecipientId = recipientId
+            removeActiveListener()
+        }
 
         val channelId = getChannelId(currentUserId, recipientId)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            // Get the timestamp of the newest message we have
+        repositoryScope.launch {
             val newestMessage = msgDao.getNewestMessage(channelId)
-            // Use a small buffer (10 seconds) to ensure we catch status updates for recent messages
             val fromTimestamp = (newestMessage?.firebaseTimestamp ?: System.currentTimeMillis()) - 10000
 
-            Log.d("TAG", "Starting realtime sync from timestamp: $fromTimestamp")
+            Log.d(TAG, "Starting realtime sync from timestamp: $fromTimestamp for recipient: $recipientId")
 
-            val listener = server.listenForNewMessages(
+            val handle = server.listenForNewMessagesHandle(
                 currentUserId = currentUserId,
                 recipientId = recipientId,
                 fromTimestamp = fromTimestamp,
@@ -205,14 +213,24 @@ class UserLocalRepository(
                 }
             )
 
-            activeListener = ActiveListener(
-                currentUserId = currentUserId,
-                recipientId = recipientId,
-                listener = listener
-            )
+            synchronized(this@UserLocalRepository) {
+                if (requestedRecipientId == recipientId) {
+                    activeListener = ActiveListener(
+                        currentUserId = currentUserId,
+                        recipientId = recipientId,
+                        handle = handle
+                    )
+                } else {
+                    // Sync was cancelled while fetching newestMessage
+                    server.removeMessageListener(handle)
+                }
+            }
         }
     }
 
+    @Volatile
+    private var globalMessageQuery: Query? = null
+    @Volatile
     private var globalMessageListener: ValueEventListener? = null
 
     /**
@@ -221,49 +239,58 @@ class UserLocalRepository(
      */
     fun startGlobalIncomingMessageListener() {
         val currentUserId = mAuth.currentUser?.uid ?: return
-        if (globalMessageListener != null) return
 
-        val userMessagesRef = FirebaseDatabase.getInstance()
-            .getReference("Message")
-            .child("Sender: $currentUserId")
+        synchronized(this) {
+            if (globalMessageListener != null) return
 
-        globalMessageListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                CoroutineScope(Dispatchers.IO).launch {
-                    for (channelSnapshot in snapshot.children) {
-                        val messagesSnapshot = channelSnapshot.child("Messages")
-                        for (messageSnapshot in messagesSnapshot.children) {
-                            val msg = messageSnapshot.getValue(TextMessage::class.java) ?: continue
-                            msg.id = messageSnapshot.key ?: ""
+            val userMessagesRef = FirebaseDatabase.getInstance()
+                .getReference("Message")
+                .child("Sender: $currentUserId")
 
-                            val isRead = messageSnapshot.child("isRead").getValue(Boolean::class.java) ?: msg.isRead
+            globalMessageQuery = userMessagesRef
+            globalMessageListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    repositoryScope.launch {
+                        for (channelSnapshot in snapshot.children) {
+                            val messagesSnapshot = channelSnapshot.child("Messages")
+                            for (messageSnapshot in messagesSnapshot.children) {
+                                val msg = messageSnapshot.getValue(TextMessage::class.java) ?: continue
+                                msg.id = messageSnapshot.key ?: ""
 
-                            if (msg.senderId != currentUserId && !isRead) {
-                                handleIncomingMessage(msg, currentUserId)
+                                val isRead = messageSnapshot.child("isRead").getValue(Boolean::class.java) ?: msg.isRead
+
+                                if (msg.senderId != currentUserId && !isRead) {
+                                    handleIncomingMessage(msg, currentUserId)
+                                }
                             }
                         }
                     }
                 }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "Global message listener cancelled: ${error.message}")
+                }
             }
 
-            override fun onCancelled(error: DatabaseError) {
-                Log.e(TAG, "Global message listener cancelled: ${error.message}")
-            }
+            userMessagesRef.addValueEventListener(globalMessageListener!!)
+            Log.d(TAG, "Global incoming message listener started for user: $currentUserId")
         }
-
-        userMessagesRef.addValueEventListener(globalMessageListener!!)
-        Log.d(TAG, "Global incoming message listener started for user: $currentUserId")
     }
 
     fun stopGlobalIncomingMessageListener() {
-        val currentUserId = mAuth.currentUser?.uid ?: return
-        globalMessageListener?.let {
-            FirebaseDatabase.getInstance()
-                .getReference("Message")
-                .child("Sender: $currentUserId")
-                .removeEventListener(it)
+        synchronized(this) {
+            val listener = globalMessageListener
+            val query = globalMessageQuery
+            if (query != null && listener != null) {
+                try {
+                    query.removeEventListener(listener)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error removing global message listener: ${e.message}")
+                }
+            }
+            globalMessageListener = null
+            globalMessageQuery = null
         }
-        globalMessageListener = null
     }
 
     /**
@@ -271,17 +298,18 @@ class UserLocalRepository(
      * Should be called when leaving a chat
      */
     fun stopRealtimeSync(currentUserId: String, recipientId: String) {
-        removeActiveListener()
-        Log.d(TAG, "Realtime sync stopped")
+        synchronized(this) {
+            if (requestedRecipientId == recipientId) {
+                requestedRecipientId = null
+            }
+            removeActiveListener()
+        }
+        Log.d(TAG, "Realtime sync stopped for recipient: $recipientId")
     }
 
     private fun removeActiveListener() {
         activeListener?.let { active ->
-            server.removeMessageListener(
-                currentUserId = active.currentUserId,
-                recipientId = active.recipientId,
-                listener = active.listener
-            )
+            server.removeMessageListener(active.handle)
         }
         activeListener = null
     }
@@ -322,7 +350,7 @@ class UserLocalRepository(
     }
 
     private fun handleIncomingMessageUpdate(message: TextMessage) {
-        CoroutineScope(Dispatchers.IO).launch {
+        repositoryScope.launch {
             try {
                 val existing = msgDao.getMessageById(message.id) ?: return@launch
 
@@ -345,10 +373,8 @@ class UserLocalRepository(
      * Prevents duplicates and updates existing messages
      */
     private fun handleIncomingMessage(message: TextMessage, currentUserId: String) {
-        CoroutineScope(Dispatchers.IO).launch {
+        repositoryScope.launch {
             try {
-                // Ignore own sent messages (echos from Firebase) on the sender's device.
-                // Delivery and Read statuses are only updated by the recipient's device.
                 if (message.senderId == currentUserId) {
                     Log.d(TAG, "Ignoring own message echo in handleIncomingMessage: ${message.id}")
                     return@launch
@@ -357,11 +383,12 @@ class UserLocalRepository(
                 val channelId = getChannelId(message.senderId, message.recipientId)
 
                 // Check if chat is open to mark as read immediately
-                val isChatOpen = activeListener?.recipientId == message.senderId || com.mina.moonchat.utils.ActiveChatManager.activeRecipientId == message.senderId
+                val activeRecipient = activeListener?.recipientId
+                val globalActiveRecipient = com.mina.moonchat.utils.ActiveChatManager.activeRecipientId
+                val isChatOpen = activeRecipient == message.senderId || globalActiveRecipient == message.senderId
                 val finalIsRead = if (isChatOpen) true else message.isRead
-                val finalIsDelivered = true // Received on recipient's device means delivered
+                val finalIsDelivered = true
 
-                // Update Firebase if we altered states locally (for recipient)
                 if (finalIsRead != message.isRead || finalIsDelivered != message.isDelivered) {
                     server.updateMessageStatusOnFirebase(
                         senderId = message.senderId,
@@ -396,7 +423,6 @@ class UserLocalRepository(
                     timestamp = message.date.time
                 )
 
-                // Show notification if user is not in the chat with sender
                 if (!isChatOpen) {
                     FirebaseFirestore.getInstance().collection("Users").document(message.senderId).get()
                         .addOnSuccessListener { doc ->
@@ -420,7 +446,7 @@ class UserLocalRepository(
                         }
                 }
 
-                Log.d("TAG", "New message saved: ${message.id}")
+                Log.d(TAG, "New message saved: ${message.id}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling incoming message: ${e.message}")
             }
@@ -486,7 +512,7 @@ class UserLocalRepository(
             return
         }
 
-        CoroutineScope(Dispatchers.IO).launch {
+        repositoryScope.launch {
             try {
                 val existing = msgDao.getMessageById(messageId)
                 val currentRetryCount = existing?.retryCount ?: message.retryCount
@@ -501,7 +527,7 @@ class UserLocalRepository(
                 server.sendMessage(
                     message = message,
                     onSuccess = { firebaseId ->
-                        CoroutineScope(Dispatchers.IO).launch {
+                        repositoryScope.launch {
                             try {
                                 val current = msgDao.getMessageById(messageId)
                                 if (current != null) {
@@ -516,7 +542,6 @@ class UserLocalRepository(
                                 }
                                 Log.d(TAG, "Message marked as SENT: $firebaseId")
 
-                                // Update chat channel metadata
                                 server.updateChatChannels(
                                     senderId = message.senderId,
                                     senderName = message.senderName,
@@ -527,7 +552,6 @@ class UserLocalRepository(
                                     lastMessage = message.text
                                 )
 
-                                // Trigger FCM push notification to recipient
                                 FcmNotificationSender.sendNotification(
                                     recipientId = message.recipientId,
                                     senderId = message.senderId,
@@ -542,7 +566,7 @@ class UserLocalRepository(
                         }
                     },
                     onError = { error ->
-                        CoroutineScope(Dispatchers.IO).launch {
+                        repositoryScope.launch {
                             try {
                                 val current = msgDao.getMessageById(messageId)
                                 val newRetryCount = (current?.retryCount ?: currentRetryCount) + 1

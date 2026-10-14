@@ -27,6 +27,8 @@ import com.mina.moonchat.adapters.SearchFriendListAdapter
 import com.mina.moonchat.adapters.SearchListener
 import com.mina.moonchat.databinding.FragmentAddFriendsBinding
 import com.mina.moonchat.models.User
+import com.mina.moonchat.models.toNormalizedUser
+import com.mina.moonchat.utils.FriendshipDataMigration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -107,12 +109,13 @@ class AddFriendsFragment : Fragment() {
         friendsListener = db.collection("Users").document(currentUserId).collection("Friends")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                val ids = snapshot.documents.map { it.id }.toMutableSet()
-                db.collection("Users").document(currentUserId).get().addOnSuccessListener { userDoc ->
-                    (userDoc.get("friends") as? List<*>)?.forEach { id -> (id as? String)?.let { ids.add(it) } }
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val confirmedIds = FriendshipDataMigration.fetchConfirmedFriendIds(db, currentUserId)
                     friendUserIdsSet.clear()
-                    friendUserIdsSet.addAll(ids)
-                    rvAdapter.friendUserIds = friendUserIdsSet
+                    friendUserIdsSet.addAll(confirmedIds)
+                    launch(Dispatchers.Main) {
+                        rvAdapter.friendUserIds = friendUserIdsSet
+                    }
                 }
             }
     }
@@ -122,7 +125,6 @@ class AddFriendsFragment : Fragment() {
         val targetUserId = targetUser.userId.ifEmpty { targetUser.id }
         if (targetUserId.isEmpty()) return
 
-        // Fast path check from local loaded set
         if (friendUserIdsSet.contains(targetUserId) || friendUserIdsSet.contains(targetUser.userId) || friendUserIdsSet.contains(targetUser.id)) {
             findNavController().navigate(
                 AddFriendsFragmentDirections.actionAddFriendsFragmentToChatFragment(targetUser)
@@ -131,31 +133,8 @@ class AddFriendsFragment : Fragment() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            var isFriend = false
-            try {
-                val friendDoc = db.collection("Users").document(currentUserId)
-                    .collection("Friends").document(targetUserId).get().await()
-                if (friendDoc.exists()) {
-                    isFriend = true
-                } else {
-                    val userDoc = db.collection("Users").document(currentUserId).get().await()
-                    val friendsList = userDoc.get("friends") as? List<*>
-                    if (friendsList?.contains(targetUserId) == true) {
-                        isFriend = true
-                    } else {
-                        val reqId1 = "${currentUserId}_${targetUserId}"
-                        val reqId2 = "${targetUserId}_${currentUserId}"
-                        val req1 = db.collection("FriendRequests").document(reqId1).get().await()
-                        val req2 = db.collection("FriendRequests").document(reqId2).get().await()
-
-                        if ((req1.exists() && req1.getString("status") == "accepted") ||
-                            (req2.exists() && req2.getString("status") == "accepted")
-                        ) {
-                            isFriend = true
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
+            val confirmedIds = FriendshipDataMigration.fetchConfirmedFriendIds(db, currentUserId)
+            val isFriend = confirmedIds.contains(targetUserId) || confirmedIds.contains(targetUser.userId) || confirmedIds.contains(targetUser.id)
 
             withContext(Dispatchers.Main) {
                 if (isFriend) {
@@ -237,11 +216,14 @@ class AddFriendsFragment : Fragment() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val currentUserDoc = db.collection("Users").document(currentUserId).get().await()
-                val currentUserName = currentUserDoc.getString("displayName")
+                val currentUser = currentUserDoc.toNormalizedUser()
+                val currentUserName = currentUser?.displayName
+                    ?: currentUserDoc.getString("displayName")
+                    ?: currentUserDoc.getString("username")
                     ?: mAuth.currentUser?.displayName
                     ?: "MoonChat User"
-                val currentUserPfp = currentUserDoc.getString("profileImg")
-                val currentUserBio = currentUserDoc.getString("bio") ?: "Hey there! I am using MoonChat."
+                val currentUserPfp = currentUser?.profileImg ?: currentUserDoc.getString("profileImg") ?: currentUserDoc.getString("pfp")
+                val currentUserBio = currentUser?.bio ?: currentUserDoc.getString("bio") ?: "Hey there! I am using MoonChat."
 
                 val requestId = "${currentUserId}_${targetUserId}"
                 val requestData = hashMapOf(
@@ -297,10 +279,8 @@ class AddFriendsFragment : Fragment() {
             try {
                 val currentUserId = mAuth.currentUser?.uid.orEmpty()
 
-                // 1. Fetch excluded user IDs (current user, blocked users)
                 val excludedUserIds = getExcludedUserIds(currentUserId)
 
-                // 2. Fetch candidate users from Firestore
                 val candidateUsers = fetchAllUsers()
 
                 val eligibleUsers = candidateUsers.filter { user ->
@@ -308,12 +288,10 @@ class AddFriendsFragment : Fragment() {
                     !excludedUserIds.contains(uId) && !excludedUserIds.contains(user.userId) && !excludedUserIds.contains(user.id)
                 }
 
-                // 3. Fetch friends map to calculate mutual friends
                 val allTargetIds = (eligibleUsers.map { it.userId.ifEmpty { it.id } } + currentUserId).distinct()
                 val userFriendsMap = fetchUserFriendsMap(allTargetIds)
                 val currentUserFriends = userFriendsMap[currentUserId] ?: emptySet()
 
-                // 4. Score candidates using formula: score = mutualFriends × 30 + sharedGroups × 25 + contactMatch × 40 + recentlyActive (+5)
                 val results = withContext(Dispatchers.Default) {
                     eligibleUsers
                         .mapNotNull { user ->
@@ -322,10 +300,10 @@ class AddFriendsFragment : Fragment() {
                             val candidateFriends = userFriendsMap[uId] ?: userFriendsMap[user.userId] ?: emptySet()
                             val mutualFriendsCount = currentUserFriends.intersect(candidateFriends).size
 
-                            val sharedGroupsCount = 0 // Placeholder for future grouping system
+                            val sharedGroupsCount = 0
                             val sharedGroupNames = emptyList<String>()
 
-                            val inContacts = false // Placeholder for future contacts system
+                            val inContacts = false
                             val isRecentlyActive = userOnlineStates[uId] == true || userOnlineStates[user.userId] == true
 
                             val suggestedScore = (mutualFriendsCount * 30) +
@@ -346,10 +324,8 @@ class AddFriendsFragment : Fragment() {
                             )
 
                             if (rawQuery.isBlank()) {
-                                // Blank query: Suggested Friends mode
                                 updatedUser to suggestedScore
                             } else {
-                                // Non-blank query: Query Match Weight + Suggested Score Bonus
                                 val searchWeight = calculateMatchWeight(user, rawQuery)
                                 if (searchWeight > 0) {
                                     val totalScore = searchWeight + suggestedScore
@@ -413,7 +389,6 @@ class AddFriendsFragment : Fragment() {
         }
         if (userIds.isEmpty()) return@withContext map
 
-        // 1. Fetch user documents to check array field 'friends'
         for (chunk in userIds.chunked(10)) {
             try {
                 val docs = db.collection("Users").whereIn(FieldPath.documentId(), chunk).get().await()
@@ -425,7 +400,6 @@ class AddFriendsFragment : Fragment() {
             } catch (_: Exception) {}
         }
 
-        // 2. Fetch Users/$userId/Friends subcollection
         for (uId in userIds) {
             try {
                 val subDocs = db.collection("Users").document(uId).collection("Friends").get().await()
@@ -447,11 +421,7 @@ class AddFriendsFragment : Fragment() {
         try {
             val snapshot = db.collection("Users").get().await()
             val users = snapshot.documents.mapNotNull { doc ->
-                val user = doc.toObject(User::class.java) ?: return@mapNotNull null
-                if (user.userId.isEmpty()) {
-                    user.userId = doc.id
-                }
-                user
+                doc.toNormalizedUser()
             }
             cachedUsersList = users
             users
@@ -473,25 +443,20 @@ class AddFriendsFragment : Fragment() {
 
         var weight = 0
 
-        // Exact username +100
         val isExactUsername = (uName == q) || (uNameClean == qClean)
         if (isExactUsername) {
             weight += 100
         } else if (uName.startsWith(q) || uNameClean.startsWith(qClean)) {
-            // Username starts with query +70
             weight += 70
         }
 
-        // Exact display name +60
         val isExactDisplayName = (dName == q)
         if (isExactDisplayName) {
             weight += 60
         } else if (dName.startsWith(q)) {
-            // Display name starts with query +40
             weight += 40
         }
 
-        // Contains query +20
         val containsQuery = uName.contains(q) || uNameClean.contains(qClean) || dName.contains(q)
         if (containsQuery) {
             weight += 20
@@ -509,7 +474,6 @@ class AddFriendsFragment : Fragment() {
             return@withContext excluded
         }
 
-        // Blocked users
         try {
             val userDoc = db.collection("Users").document(currentUserId).get().await()
             if (userDoc.exists()) {
