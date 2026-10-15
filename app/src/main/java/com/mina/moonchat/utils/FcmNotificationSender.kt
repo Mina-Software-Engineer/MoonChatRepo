@@ -127,9 +127,7 @@ object FcmNotificationSender {
             .document(recipientId)
             .get()
             .addOnSuccessListener { document ->
-                val fcmToken = document.getString("fcmToken")?.takeIf { it.isNotBlank() }
-                    ?: document.getString("token")?.takeIf { it.isNotBlank() }
-                    ?: ""
+                val fcmToken = document.getString("fcmToken") ?: ""
                 if (fcmToken.isNotBlank()) {
                     thread {
                         val tokenAndProject = getFreshAccessToken(MoonChat.instance)

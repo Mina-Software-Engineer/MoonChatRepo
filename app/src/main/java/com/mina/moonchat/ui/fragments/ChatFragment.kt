@@ -46,7 +46,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-
 class ChatFragment : BaseFragment() {
 
     companion object {
@@ -64,6 +63,10 @@ class ChatFragment : BaseFragment() {
     private var pendingBottomScroll = false
     private var activeRecipientUser: User? = null
     private var dateReceiverRegistered = false
+
+    private val datePillHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var isDatePillVisible = false
+
     private val dateChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val shouldRefresh = when (intent?.action) {
@@ -106,7 +109,6 @@ class ChatFragment : BaseFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Postpone transition until image is loaded
         postponeEnterTransition()
 
         val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
@@ -144,21 +146,13 @@ class ChatFragment : BaseFragment() {
             })
             .into(binding.chatPfpImageView)
 
-
         setupRecyclerView()
         setupObservers()
         setupClickListeners(recipientUser)
 
-        // Load messages
         loadMessages(recipientUser.userId)
-
-        // Clear notification unread stack for this sender
         NotificationHelper.clearUnreadForSender(recipientUser.userId)
-
-        // Mark messages as read when opening chat
         _viewModel.markMessagesAsRead(recipientUser.userId)
-
-        // Sync any pending messages
         _viewModel.syncPendingMessages()
     }
 
@@ -188,17 +182,18 @@ class ChatFragment : BaseFragment() {
             })
         }
         chatLayoutManager = LinearLayoutManager(requireContext()).apply {
-            reverseLayout = true // Newest messages at bottom
+            reverseLayout = true
             stackFromEnd = false
         }
 
         binding.chatRecyclerView.apply {
             adapter = messageAdapter
             layoutManager = chatLayoutManager
-            itemAnimator = null // Disable animations for smoother paging
+            itemAnimator = null
         }
 
-        // Handle load states for scroll behavior
+        setupFloatingDatePill()
+
         viewLifecycleOwner.lifecycleScope.launch {
             messageAdapter.loadStateFlow.collectLatest { loadStates ->
                 when (val refresh = loadStates.refresh) {
@@ -211,7 +206,6 @@ class ChatFragment : BaseFragment() {
                         binding.progressBar.isVisible = false
                         binding.chatRecyclerView.isVisible = true
 
-                        // Scroll to bottom on initial load
                         if (shouldScrollToBottom && messageAdapter.itemCount > 0) {
                             requestScrollToBottom(force = true)
                             shouldScrollToBottom = false
@@ -247,8 +241,137 @@ class ChatFragment : BaseFragment() {
         }
     }
 
+    private fun setupFloatingDatePill() {
+        binding.chatRecyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                super.onScrollStateChanged(rv, newState)
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING || newState == RecyclerView.SCROLL_STATE_SETTLING) {
+                    datePillHandler.removeCallbacksAndMessages(null)
+                    updateFloatingDatePillText()
+                    showFloatingDatePill()
+                } else if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    scheduleHideFloatingDatePill()
+                }
+            }
+
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(rv, dx, dy)
+                if (dx != 0 || dy != 0 || isDatePillVisible) {
+                    updateFloatingDatePillText()
+                    if (!isDatePillVisible && (dx != 0 || dy != 0)) {
+                        showFloatingDatePill()
+                    }
+                }
+            }
+        })
+    }
+
+    private fun updateFloatingDatePillText() {
+        if (!this::chatLayoutManager.isInitialized || !this::messageAdapter.isInitialized) return
+
+        val topPosition = chatLayoutManager.findLastVisibleItemPosition()
+        if (topPosition == RecyclerView.NO_POSITION || topPosition < 0 || topPosition >= messageAdapter.itemCount) {
+            return
+        }
+
+        var timelineItem = messageAdapter.peek(topPosition)
+        if (timelineItem == null) {
+            for (i in 1..3) {
+                val checkPos = topPosition - i
+                if (checkPos in 0 until messageAdapter.itemCount) {
+                    val alt = messageAdapter.peek(checkPos)
+                    if (alt != null) {
+                        timelineItem = alt
+                        break
+                    }
+                }
+            }
+        }
+
+        val dateText = when (timelineItem) {
+            is ChatTimelineItem.MessageItem -> {
+                val label = ChatDateSeparator.label(
+                    timelineItem.message.date,
+                    Date(),
+                    TimeZone.getDefault(),
+                    Locale.getDefault()
+                )
+                formatDateLabel(label)
+            }
+            is ChatTimelineItem.DateSeparator -> {
+                formatDateLabel(timelineItem.label)
+            }
+            else -> null
+        }
+
+        if (!dateText.isNullOrBlank()) {
+            binding.floatingDatePill.text = dateText
+        }
+    }
+
+    private fun formatDateLabel(label: com.mina.moonchat.utils.ChatDateLabel): String {
+        return when (label) {
+            com.mina.moonchat.utils.ChatDateLabel.Today -> getString(R.string.today)
+            com.mina.moonchat.utils.ChatDateLabel.Yesterday -> getString(R.string.yesterday)
+            is com.mina.moonchat.utils.ChatDateLabel.Absolute -> label.value
+        }
+    }
+
+    private fun showFloatingDatePill() {
+        val pill = binding.floatingDatePill
+        if (pill.text.isNullOrBlank()) return
+
+        datePillHandler.removeCallbacksAndMessages(null)
+
+        if (!isDatePillVisible || pill.visibility != View.VISIBLE) {
+            pill.animate().cancel()
+            val offscreenY = -(pill.height.takeIf { it > 0 }?.toFloat() ?: 100f)
+            if (pill.visibility != View.VISIBLE) {
+                pill.translationY = offscreenY
+                pill.alpha = 0f
+                pill.visibility = View.VISIBLE
+            }
+            pill.animate()
+                .translationY(0f)
+                .alpha(1f)
+                .setDuration(250)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .setListener(null)
+                .start()
+            isDatePillVisible = true
+        }
+    }
+
+    private fun hideFloatingDatePill() {
+        val pill = binding.floatingDatePill
+        if (pill.visibility != View.VISIBLE) return
+
+        pill.animate().cancel()
+        val targetY = -(pill.height.takeIf { it > 0 }?.toFloat() ?: 100f)
+        pill.animate()
+            .translationY(targetY)
+            .alpha(0f)
+            .setDuration(250)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .setListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    pill.visibility = View.GONE
+                    isDatePillVisible = false
+                }
+            })
+            .start()
+    }
+
+    private fun scheduleHideFloatingDatePill() {
+        datePillHandler.removeCallbacksAndMessages(null)
+        datePillHandler.postDelayed({
+            if (isAdded) {
+                hideFloatingDatePill()
+            }
+        }, 2000)
+    }
+
     private fun setupObservers() {
-        // Observe online/offline status to update the online indicator dot
         _viewModel.onlineStatus.observe(viewLifecycleOwner) { status ->
             val isOnline = status.equals("Online", ignoreCase = true)
             binding.onlinetv.setBackgroundResource(
@@ -256,7 +379,6 @@ class ChatFragment : BaseFragment() {
             )
         }
 
-        // Observe error messages
         _viewModel.errorMessage.observe(viewLifecycleOwner) { error ->
             error?.let {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
@@ -264,7 +386,6 @@ class ChatFragment : BaseFragment() {
             }
         }
 
-        // Observe sending state
         _viewModel.isSending.observe(viewLifecycleOwner) { isSending ->
             binding.sendBtn.isEnabled = !isSending
             binding.sendBtn.alpha = if (isSending) 0.5f else 1.0f
@@ -272,14 +393,12 @@ class ChatFragment : BaseFragment() {
             binding.attachImageBtn.alpha = if (isSending) 0.5f else 1.0f
         }
 
-        // Observe text changes for typing state
         _viewModel.textMessage.observe(viewLifecycleOwner) { text ->
             _viewModel.onTextChanged(text.orEmpty())
         }
     }
 
     private fun setupClickListeners(recipientUser: User) {
-        // Emoji button
         binding.emojiBtn.setOnClickListener {
             if (binding.emojiPicker.visibility == View.VISIBLE) {
                 binding.emojiPicker.visibility = View.GONE
@@ -289,24 +408,20 @@ class ChatFragment : BaseFragment() {
             }
         }
 
-        // Set emoji picker listener
         binding.emojiPicker.setOnEmojiPickedListener {
             binding.textViewMessageBox.append(it.emoji)
         }
 
-        // Hide emoji picker when text input is clicked
         binding.textViewMessageBox.setOnClickListener {
             binding.emojiPicker.visibility = View.GONE
         }
 
-        // Hide emoji picker when text input is focused
         binding.textViewMessageBox.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
                 binding.emojiPicker.visibility = View.GONE
             }
         }
 
-        // Send button
         binding.sendBtn.setOnClickListener {
             val messageText = binding.textViewMessageBox.text?.toString()?.trim()
             if (!messageText.isNullOrEmpty()) {
@@ -433,6 +548,7 @@ class ChatFragment : BaseFragment() {
     }
 
     override fun onDestroyView() {
+        datePillHandler.removeCallbacksAndMessages(null)
         messagesJob?.cancel()
         activeRecipientUser = null
         super.onDestroyView()

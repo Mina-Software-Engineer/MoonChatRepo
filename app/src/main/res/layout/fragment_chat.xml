@@ -108,6 +108,27 @@
             app:layout_constraintTop_toBottomOf="@id/toolbar_container"
             tools:listitem="@layout/recipient_item_text_message" />
 
+        <!-- Floating Sticky Date Pill Overlay -->
+        <TextView
+            android:id="@+id/floating_date_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/date_separator_background"
+            android:elevation="6dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/toolbar_container"
+            tools:text="Today"
+            tools:visibility="visible" />
+
         <ProgressBar
             android:id="@+id/progressBar"
             android:layout_width="wrap_content"
