@@ -76,6 +76,18 @@ data class TextMessage(
     @set:PropertyName("media")
     var media: ChatImageMedia? = null,
 
+    @get:PropertyName("isEdited")
+    @set:PropertyName("isEdited")
+    var isEdited: Boolean = false,
+
+    @get:PropertyName("editedAt")
+    @set:PropertyName("editedAt")
+    var editedAt: Long = 0,
+
+    @get:PropertyName("isDeletedForEveryone")
+    @set:PropertyName("isDeletedForEveryone")
+    var isDeletedForEveryone: Boolean = false,
+
     @get:Exclude
     @set:Exclude
     var localImagePath: String? = null,
@@ -131,6 +143,18 @@ data class TextMessage(
     fun isFailed(): Boolean = status.equals("FAILED", ignoreCase = true)
 
     fun isRetryable(): Boolean = isFailed() && !isDelivered && !isRead
+
+    fun canBeEditedBy(userId: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (senderId != userId || isDeletedForEveryone || type == MessageType.IMAGE) return false
+        val ageMs = nowMs - date.time
+        return ageMs in 0..(15 * 60 * 1000L) // 15 minute edit window
+    }
+
+    fun canBeDeletedForEveryoneBy(userId: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (senderId != userId || isDeletedForEveryone) return false
+        val ageMs = nowMs - date.time
+        return ageMs in 0..(24 * 60 * 60 * 1000L) // 24 hour delete window
+    }
 
     fun resolveDeliveryState(): MessageDeliveryState {
         return when {

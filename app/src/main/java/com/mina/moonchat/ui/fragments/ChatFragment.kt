@@ -1,21 +1,26 @@
 package com.mina.moonchat.ui.fragments
 
-import android.os.Bundle
 import android.content.BroadcastReceiver
-import android.util.Log
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
-import android.content.Context
-import android.net.Uri
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.view.isVisible
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.paging.LoadState
@@ -31,9 +36,9 @@ import com.mina.moonchat.R
 import com.mina.moonchat.adapters.MessageAdapter
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentChatBinding
-import com.mina.moonchat.models.User
 import com.mina.moonchat.models.ChatTimelineItem
 import com.mina.moonchat.models.TextMessage
+import com.mina.moonchat.models.User
 import com.mina.moonchat.utils.ActiveChatManager
 import com.mina.moonchat.utils.ChatDateSeparator
 import com.mina.moonchat.utils.NotificationHelper
@@ -66,6 +71,7 @@ class ChatFragment : BaseFragment() {
 
     private val datePillHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var isDatePillVisible = false
+    private var selectedMessage: TextMessage? = null
 
     private val dateChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -149,6 +155,7 @@ class ChatFragment : BaseFragment() {
         setupRecyclerView()
         setupObservers()
         setupClickListeners(recipientUser)
+        setupActionModeBar(mAuth.currentUser?.uid.orEmpty())
 
         loadMessages(recipientUser.userId)
         NotificationHelper.clearUnreadForSender(recipientUser.userId)
@@ -161,12 +168,20 @@ class ChatFragment : BaseFragment() {
 
         messageAdapter = MessageAdapter(currentUserId).apply {
             setOnMessageClickListener(object : MessageAdapter.OnMessageClickListener {
-                override fun onMessageClick(message: com.mina.moonchat.models.TextMessage) {
+                override fun onMessageClick(message: TextMessage) {
+                    if (selectedMessage != null) {
+                        exitActionMode()
+                        return
+                    }
                     if (message.isFailed()) {
                         _viewModel.retryMessage(message)
                     }
                 }
-                override fun onImageClick(message: com.mina.moonchat.models.TextMessage) {
+                override fun onImageClick(message: TextMessage) {
+                    if (selectedMessage != null) {
+                        exitActionMode()
+                        return
+                    }
                     com.mina.moonchat.ui.dialogs.ImageViewerDialog.show(
                         requireContext(),
                         message,
@@ -174,10 +189,13 @@ class ChatFragment : BaseFragment() {
                     )
                 }
                 override fun onRetryClick(
-                    message: com.mina.moonchat.models.TextMessage,
+                    message: TextMessage,
                     onFinished: (queued: Boolean) -> Unit
                 ) {
                     _viewModel.retryMessage(message, onFinished)
+                }
+                override fun onMessageLongClick(message: TextMessage) {
+                    enterActionMode(message)
                 }
             })
         }
@@ -239,6 +257,124 @@ class ChatFragment : BaseFragment() {
                 }
             })
         }
+    }
+
+    private fun enterActionMode(message: TextMessage) {
+        selectedMessage = message
+        messageAdapter.setSelectedMessageId(message.id)
+        binding.actionModeToolbarContainer.visibility = View.VISIBLE
+        binding.actionModeTitle.text = "1"
+    }
+
+    private fun exitActionMode() {
+        selectedMessage = null
+        messageAdapter.setSelectedMessageId(null)
+        binding.actionModeToolbarContainer.visibility = View.GONE
+    }
+
+    private fun setupActionModeBar(currentUserId: String) {
+        binding.actionModeCloseBtn.setOnClickListener {
+            exitActionMode()
+        }
+
+        binding.actionModeCopyBtn.setOnClickListener {
+            val msg = selectedMessage
+            if (msg != null && msg.text.isNotBlank() && !msg.isDeletedForEveryone) {
+                val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Copied Message", msg.text)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(requireContext(), getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
+            }
+            exitActionMode()
+        }
+
+        binding.actionModeDeleteBtn.setOnClickListener {
+            val msg = selectedMessage
+            if (msg != null) {
+                showMessageContextMenu(msg, currentUserId)
+            }
+            exitActionMode()
+        }
+
+        binding.actionModeReplyBtn.setOnClickListener {
+            Toast.makeText(requireContext(), getString(R.string.action_reply_coming_soon), Toast.LENGTH_SHORT).show()
+            exitActionMode()
+        }
+
+        binding.actionModeForwardBtn.setOnClickListener {
+            Toast.makeText(requireContext(), getString(R.string.action_forward_coming_soon), Toast.LENGTH_SHORT).show()
+            exitActionMode()
+        }
+    }
+
+    private fun showMessageContextMenu(message: TextMessage, currentUserId: String) {
+        if (!isAdded) return
+
+        val nowMs = System.currentTimeMillis()
+        val canEdit = message.canBeEditedBy(currentUserId, nowMs)
+        val canDeleteEveryone = message.canBeDeletedForEveryoneBy(currentUserId, nowMs)
+
+        val options = mutableListOf<String>()
+
+        if (canEdit) {
+            options.add(getString(R.string.action_edit_message))
+        }
+        if (canDeleteEveryone) {
+            options.add(getString(R.string.action_delete_for_everyone))
+        }
+        options.add(getString(R.string.action_delete_for_me))
+
+        AlertDialog.Builder(requireContext())
+            .setItems(options.toTypedArray()) { _, which ->
+                val selectedOption = options[which]
+                when (selectedOption) {
+                    getString(R.string.action_edit_message) -> {
+                        showEditMessageDialog(message)
+                    }
+                    getString(R.string.action_delete_for_everyone) -> {
+                        showConfirmDeleteEveryoneDialog(message)
+                    }
+                    getString(R.string.action_delete_for_me) -> {
+                        _viewModel.deleteMessageForMe(message)
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun showEditMessageDialog(message: TextMessage) {
+        val input = EditText(requireContext()).apply {
+            setText(message.text)
+            setSelection(text.length)
+        }
+        val container = FrameLayout(requireContext()).apply {
+            val padding = (16 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding / 2, padding, padding / 2)
+            addView(input)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.edit_message_title)
+            .setView(container)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val newText = input.text.toString().trim()
+                if (newText.isNotBlank() && newText != message.text) {
+                    _viewModel.editMessage(message, newText)
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showConfirmDeleteEveryoneDialog(message: TextMessage) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.delete_for_everyone_title)
+            .setMessage(R.string.delete_for_everyone_message)
+            .setPositiveButton(R.string.action_delete_for_everyone) { _, _ ->
+                _viewModel.deleteMessageForEveryone(message)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun setupFloatingDatePill() {
@@ -438,17 +574,15 @@ class ChatFragment : BaseFragment() {
             }
         }
 
-        // Back button
         binding.toolbarBackBtn.setOnClickListener {
-            if (binding.emojiPicker.visibility == View.VISIBLE) {
+            if (selectedMessage != null) {
+                exitActionMode()
+            } else if (binding.emojiPicker.visibility == View.VISIBLE) {
                 binding.emojiPicker.visibility = View.GONE
             } else {
                 findNavController().navigateUp()
             }
         }
-
-        // Retry button for failed messages (if you have one in your layout)
-        // binding.retryBtn.setOnClickListener { ... }
     }
 
     private fun loadMessages(recipientId: String) {
@@ -551,6 +685,7 @@ class ChatFragment : BaseFragment() {
         datePillHandler.removeCallbacksAndMessages(null)
         messagesJob?.cancel()
         activeRecipientUser = null
+        selectedMessage = null
         super.onDestroyView()
         _viewModel.stopSync()
     }

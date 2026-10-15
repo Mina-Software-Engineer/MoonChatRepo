@@ -286,6 +286,39 @@ class ChatViewModel(app: Application) : BaseViewModel(
         }
     }
 
+    fun editMessage(message: TextMessage, newText: String) {
+        viewModelScope.launch {
+            try {
+                repository.editMessage(message, newText)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to edit message: ${e.message}")
+                _errorMessage.value = e.message ?: "Failed to edit message"
+            }
+        }
+    }
+
+    fun deleteMessageForEveryone(message: TextMessage) {
+        viewModelScope.launch {
+            try {
+                repository.deleteMessageForEveryone(message)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete message for everyone: ${e.message}")
+                _errorMessage.value = e.message ?: "Failed to delete message for everyone"
+            }
+        }
+    }
+
+    fun deleteMessageForMe(message: TextMessage) {
+        viewModelScope.launch {
+            try {
+                repository.deleteMessageForMe(message)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete message for me: ${e.message}")
+                _errorMessage.value = e.message ?: "Failed to delete message for me"
+            }
+        }
+    }
+
     /**
      * Mark messages as read
      */

@@ -1,6 +1,7 @@
 package com.mina.moonchat.adapters
 
 import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
@@ -51,6 +52,17 @@ class MessageAdapter(private val currentUserId: String) :
         }
     }
 
+    private var selectedMessageId: String? = null
+
+    fun setSelectedMessageId(id: String?) {
+        if (selectedMessageId != id) {
+            selectedMessageId = id
+            notifyDataSetChanged()
+        }
+    }
+
+    fun getSelectedMessageId(): String? = selectedMessageId
+
     override fun getItemViewType(position: Int): Int {
         val item = getItem(position)
         if (item is ChatTimelineItem.DateSeparator) return TYPE_DATE_SEPARATOR
@@ -80,10 +92,15 @@ class MessageAdapter(private val currentUserId: String) :
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val item = getItem(position) ?: return
         if (holder is DateSeparatorViewHolder) {
+            holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             (item as? ChatTimelineItem.DateSeparator)?.let(holder::bind)
             return
         }
         val message = (item as? ChatTimelineItem.MessageItem)?.message ?: return
+        val isSelected = message.id == selectedMessageId
+        holder.itemView.setBackgroundColor(
+            if (isSelected) Color.parseColor("#333B82F6") else Color.TRANSPARENT
+        )
         when (holder) {
             is SenderViewHolder -> holder.bind(message)
             is RecipientViewHolder -> holder.bind(message)
@@ -142,42 +159,54 @@ class MessageAdapter(private val currentUserId: String) :
         fun bind(message: TextMessage) {
             binding.apply {
                 this.message = message
-                val state = message.resolveDeliveryState()
-                imageViewStatus.apply {
-                    visibility = View.VISIBLE
-                    setImageResource(
-                        when (state) {
-                            MessageDeliveryState.PENDING -> R.drawable.ic_pending
-                            MessageDeliveryState.SEEN -> R.drawable.ic_double_tick_seen
-                            MessageDeliveryState.DELIVERED -> R.drawable.ic_double_tick
-                            MessageDeliveryState.FAILED -> R.drawable.ic_failed
-                            MessageDeliveryState.SENT -> R.drawable.ic_tick
-                        }
-                    )
-                    setColorFilter(
-                        when (state) {
-                            MessageDeliveryState.SEEN -> Color.parseColor("#93C5FD")
-                            MessageDeliveryState.FAILED -> Color.parseColor("#FCA5A5")
-                            else -> Color.GRAY
-                        }
-                    )
-                    contentDescription = itemView.context.getString(
-                        when (state) {
-                            MessageDeliveryState.PENDING -> R.string.message_status_pending
-                            MessageDeliveryState.SENT -> R.string.message_status_sent
-                            MessageDeliveryState.DELIVERED -> R.string.message_status_delivered
-                            MessageDeliveryState.SEEN -> R.string.message_status_read
-                            MessageDeliveryState.FAILED -> R.string.message_failed_to_send
-                        }
-                    )
+                root.setOnLongClickListener {
+                    onMessageClickListener?.onMessageLongClick(message)
+                    true
                 }
-                bindTextRetry(message)
+
+                if (message.isDeletedForEveryone) {
+                    textViewMessage.text = itemView.context.getString(R.string.message_deleted_tombstone)
+                    textViewMessage.setTypeface(null, Typeface.ITALIC)
+                    imageViewStatus.visibility = View.GONE
+                    failedMessageLabel.visibility = View.GONE
+                    retryMessageButton.visibility = View.GONE
+                } else {
+                    val displayText = if (message.isEdited) {
+                        "${message.text} ${itemView.context.getString(R.string.message_edited_marker)}"
+                    } else {
+                        message.text
+                    }
+                    textViewMessage.text = displayText
+                    textViewMessage.setTypeface(null, Typeface.NORMAL)
+
+                    val state = message.resolveDeliveryState()
+                    imageViewStatus.apply {
+                        visibility = View.VISIBLE
+                        setImageResource(
+                            when (state) {
+                                MessageDeliveryState.PENDING -> R.drawable.ic_pending
+                                MessageDeliveryState.SEEN -> R.drawable.ic_double_tick_seen
+                                MessageDeliveryState.DELIVERED -> R.drawable.ic_double_tick
+                                MessageDeliveryState.FAILED -> R.drawable.ic_failed
+                                MessageDeliveryState.SENT -> R.drawable.ic_tick
+                            }
+                        )
+                        setColorFilter(
+                            when (state) {
+                                MessageDeliveryState.SEEN -> Color.parseColor("#93C5FD")
+                                MessageDeliveryState.FAILED -> Color.parseColor("#FCA5A5")
+                                else -> Color.GRAY
+                            }
+                        )
+                    }
+                    bindTextRetry(message)
+                }
                 executePendingBindings()
             }
         }
 
         private fun bindTextRetry(message: TextMessage) {
-            val canRetry = message.isRetryable()
+            val canRetry = message.isRetryable() && !message.isDeletedForEveryone
             binding.failedMessageLabel.visibility = if (canRetry) View.VISIBLE else View.GONE
             binding.retryMessageButton.apply {
                 setOnClickListener(null)
@@ -209,8 +238,27 @@ class MessageAdapter(private val currentUserId: String) :
         private val binding: RecipientItemTextMessageBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: TextMessage) {
-            binding.message = message
-            binding.executePendingBindings()
+            binding.apply {
+                this.message = message
+                root.setOnLongClickListener {
+                    onMessageClickListener?.onMessageLongClick(message)
+                    true
+                }
+
+                if (message.isDeletedForEveryone) {
+                    textViewMessage.text = itemView.context.getString(R.string.message_deleted_tombstone)
+                    textViewMessage.setTypeface(null, Typeface.ITALIC)
+                } else {
+                    val displayText = if (message.isEdited) {
+                        "${message.text} ${itemView.context.getString(R.string.message_edited_marker)}"
+                    } else {
+                        message.text
+                    }
+                    textViewMessage.text = displayText
+                    textViewMessage.setTypeface(null, Typeface.NORMAL)
+                }
+                executePendingBindings()
+            }
         }
     }
 
@@ -218,60 +266,42 @@ class MessageAdapter(private val currentUserId: String) :
         private val binding: SenderItemImageMessageBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: TextMessage) {
-            binding.message = message
-            loadMessageImage(binding.imageViewMessageImage, message)
-            binding.imageViewMessageImage.setOnClickListener {
-                if (!message.isRetryable()) {
-                    onMessageClickListener?.onImageClick(message)
+            binding.apply {
+                this.message = message
+                root.setOnLongClickListener {
+                    onMessageClickListener?.onMessageLongClick(message)
+                    true
                 }
-            }
-            val state = message.resolveDeliveryState()
-            binding.imageViewStatus.apply {
-                setImageResource(
-                    when (state) {
-                        MessageDeliveryState.PENDING -> R.drawable.ic_pending
-                        MessageDeliveryState.SEEN -> R.drawable.ic_double_tick_seen
-                        MessageDeliveryState.DELIVERED -> R.drawable.ic_double_tick
-                        MessageDeliveryState.FAILED -> R.drawable.ic_failed
-                        MessageDeliveryState.SENT -> R.drawable.ic_tick
-                    }
-                )
-                contentDescription = itemView.context.getString(
-                    when (state) {
-                        MessageDeliveryState.PENDING -> R.string.message_status_pending
-                        MessageDeliveryState.SENT -> R.string.message_status_sent
-                        MessageDeliveryState.DELIVERED -> R.string.message_status_delivered
-                        MessageDeliveryState.SEEN -> R.string.message_status_read
-                        MessageDeliveryState.FAILED -> R.string.message_failed_to_send
-                    }
-                )
-            }
-            val canRetry = message.isRetryable()
-            binding.failedMessageLabel.visibility = if (canRetry) View.VISIBLE else View.GONE
-            binding.retryMessageButton.apply {
-                setOnClickListener(null)
-                visibility = if (canRetry) View.VISIBLE else View.GONE
-                isEnabled = canRetry
-                setText(R.string.retry_message)
-                if (canRetry) {
-                    setOnClickListener {
-                        isEnabled = false
-                        setText(R.string.retrying_message)
-                        val boundMessageId = message.id
-                        onMessageClickListener?.onRetryClick(message) { queued ->
-                            val position = bindingAdapterPosition
-                            if (position != RecyclerView.NO_POSITION &&
-                                (getItem(position) as? ChatTimelineItem.MessageItem)?.message?.id == boundMessageId
-                            ) {
-                                isEnabled = true
-                                setText(R.string.retry_message)
-                                if (!queued) visibility = View.VISIBLE
-                            }
+
+                if (message.isDeletedForEveryone) {
+                    imageViewMessageImage.visibility = View.GONE
+                    failedMessageLabel.visibility = View.GONE
+                    retryMessageButton.visibility = View.GONE
+                    imageViewStatus.visibility = View.GONE
+                } else {
+                    imageViewMessageImage.visibility = View.VISIBLE
+                    loadMessageImage(imageViewMessageImage, message)
+                    imageViewMessageImage.setOnClickListener {
+                        if (!message.isRetryable()) {
+                            onMessageClickListener?.onImageClick(message)
                         }
                     }
+                    val state = message.resolveDeliveryState()
+                    imageViewStatus.apply {
+                        visibility = View.VISIBLE
+                        setImageResource(
+                            when (state) {
+                                MessageDeliveryState.PENDING -> R.drawable.ic_pending
+                                MessageDeliveryState.SEEN -> R.drawable.ic_double_tick_seen
+                                MessageDeliveryState.DELIVERED -> R.drawable.ic_double_tick
+                                MessageDeliveryState.FAILED -> R.drawable.ic_failed
+                                MessageDeliveryState.SENT -> R.drawable.ic_tick
+                            }
+                        )
+                    }
                 }
+                executePendingBindings()
             }
-            binding.executePendingBindings()
         }
     }
 
@@ -279,12 +309,24 @@ class MessageAdapter(private val currentUserId: String) :
         private val binding: RecipientItemImageMessageBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: TextMessage) {
-            binding.message = message
-            loadMessageImage(binding.imageViewRecMessageImage, message)
-            binding.imageViewRecMessageImage.setOnClickListener {
-                onMessageClickListener?.onImageClick(message)
+            binding.apply {
+                this.message = message
+                root.setOnLongClickListener {
+                    onMessageClickListener?.onMessageLongClick(message)
+                    true
+                }
+
+                if (message.isDeletedForEveryone) {
+                    imageViewRecMessageImage.visibility = View.GONE
+                } else {
+                    imageViewRecMessageImage.visibility = View.VISIBLE
+                    loadMessageImage(imageViewRecMessageImage, message)
+                    imageViewRecMessageImage.setOnClickListener {
+                        onMessageClickListener?.onImageClick(message)
+                    }
+                }
+                executePendingBindings()
             }
-            binding.executePendingBindings()
         }
     }
 
@@ -320,6 +362,7 @@ class MessageAdapter(private val currentUserId: String) :
             onMessageClick(message)
             onFinished(true)
         }
+        fun onMessageLongClick(message: TextMessage) {}
     }
 
     private var onMessageClickListener: OnMessageClickListener? = null

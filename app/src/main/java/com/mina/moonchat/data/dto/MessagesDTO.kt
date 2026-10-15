@@ -7,34 +7,6 @@ import androidx.room.PrimaryKey
 import com.mina.moonchat.models.TextMessage
 import java.util.*
 
-/*
-@Entity(tableName = "MessageEntity")
-data class MessagesDTO(
-    @PrimaryKey(autoGenerate = true)
-    @ColumnInfo(name = "message_id")
-    val messageId: Int = 0,
-    @ColumnInfo(name = "message_text")
-    val messageText: String,
-    @ColumnInfo(name = "sender_id")
-    var senderId: String,
-    @ColumnInfo(name = "recipient_id")
-    var recipientId: String,
-    @ColumnInfo(name = "sender_name")
-    var senderName: String,
-    @ColumnInfo(name = "recipient_name")
-    var recipientName: String,
-    @ColumnInfo(name = "message_time")
-    var messageTime: Long,
-    @ColumnInfo(name = "msg_type")
-    var messageType: String,
-    @ColumnInfo(name = "channelID")
-    var channelID: String
-){
-    constructor() : this(0, "", "", "", "", "", 0,"","")
-}
-*/
-
-
 @Entity(
     tableName = "MessageEntity",
     indices = [
@@ -105,7 +77,16 @@ data class MessagesDTO(
     val localImageWidth: Int? = null,
 
     @ColumnInfo(name = "local_image_height")
-    val localImageHeight: Int? = null
+    val localImageHeight: Int? = null,
+
+    @ColumnInfo(name = "is_edited")
+    val isEdited: Boolean = false,
+
+    @ColumnInfo(name = "edited_at")
+    val editedAt: Long = 0,
+
+    @ColumnInfo(name = "is_deleted_for_everyone")
+    val isDeletedForEveryone: Boolean = false
 )
 
 enum class MessageStatus {
@@ -138,7 +119,10 @@ fun MessagesDTO.toTextMessage(): TextMessage {
         localImageMimeType = this.localImageMimeType,
         localImageSize = this.localImageSize,
         localImageWidth = this.localImageWidth,
-        localImageHeight = this.localImageHeight
+        localImageHeight = this.localImageHeight,
+        isEdited = this.isEdited,
+        editedAt = this.editedAt,
+        isDeletedForEveryone = this.isDeletedForEveryone
     )
 }
 
@@ -169,6 +153,9 @@ fun TextMessage.toMessagesDTO(defaultStatus: MessageStatus = MessageStatus.SENT)
         localImageMimeType = this.localImageMimeType,
         localImageSize = this.localImageSize,
         localImageWidth = this.localImageWidth,
-        localImageHeight = this.localImageHeight
+        localImageHeight = this.localImageHeight,
+        isEdited = this.isEdited,
+        editedAt = this.editedAt,
+        isDeletedForEveryone = this.isDeletedForEveryone
     )
 }

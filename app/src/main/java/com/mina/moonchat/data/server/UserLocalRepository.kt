@@ -805,6 +805,139 @@ class UserLocalRepository(
         sendMessage(messageToRetry, senderProfileImg, recipientProfileImg)
     }
 
+    suspend fun editMessage(message: TextMessage, newText: String) {
+        val currentUserId = mAuth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
+        val nowMs = System.currentTimeMillis()
+
+        if (!message.canBeEditedBy(currentUserId, nowMs)) {
+            throw IllegalArgumentException("Message editing time limit expired (15 minutes) or unauthorized.")
+        }
+
+        val trimmedText = newText.trim()
+        if (trimmedText.isBlank()) return
+
+        val editedAtMs = nowMs
+
+        // 1. Update local Room cache
+        val existingDTO = msgDao.getMessageById(message.id)
+        if (existingDTO != null) {
+            val updatedDTO = existingDTO.copy(
+                messageText = trimmedText,
+                isEdited = true,
+                editedAt = editedAtMs
+            )
+            msgDao.insertMessage(updatedDTO)
+        }
+
+        // 2. Update Firebase Realtime Database
+        server.editMessageOnFirebase(
+            senderId = message.senderId,
+            recipientId = message.recipientId,
+            messageId = message.id,
+            newText = trimmedText,
+            editedAtMs = editedAtMs,
+            onSuccess = {
+                repositoryScope.launch {
+                    val newest = msgDao.getNewestMessage(message.channelId)
+                    if (newest?.messageId == message.id) {
+                        server.updateChatChannels(
+                            senderId = message.senderId,
+                            senderName = message.senderName,
+                            senderProfileImg = null,
+                            recipientId = message.recipientId,
+                            recipientName = message.recipientName,
+                            recipientProfileImg = null,
+                            lastMessage = trimmedText
+                        )
+                    }
+                }
+            },
+            onError = { e ->
+                Log.e(TAG, "Failed to edit message on Firebase: ${e.message}")
+            }
+        )
+    }
+
+    suspend fun deleteMessageForEveryone(message: TextMessage) {
+        val currentUserId = mAuth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
+        val nowMs = System.currentTimeMillis()
+
+        if (!message.canBeDeletedForEveryoneBy(currentUserId, nowMs)) {
+            throw IllegalArgumentException("Delete for everyone time limit expired (24 hours) or unauthorized.")
+        }
+
+        val tombstoneText = "This message was deleted"
+
+        // 1. Update local Room cache
+        val existingDTO = msgDao.getMessageById(message.id)
+        if (existingDTO != null) {
+            val deletedDTO = existingDTO.copy(
+                messageText = tombstoneText,
+                isDeletedForEveryone = true,
+                mediaJson = null,
+                localImagePath = null
+            )
+            msgDao.insertMessage(deletedDTO)
+        }
+
+        // 2. Update Firebase Realtime Database
+        server.deleteMessageForEveryoneOnFirebase(
+            senderId = message.senderId,
+            recipientId = message.recipientId,
+            messageId = message.id,
+            tombstoneText = tombstoneText,
+            onSuccess = {
+                repositoryScope.launch {
+                    val newest = msgDao.getNewestMessage(message.channelId)
+                    if (newest?.messageId == message.id) {
+                        server.updateChatChannels(
+                            senderId = message.senderId,
+                            senderName = message.senderName,
+                            senderProfileImg = null,
+                            recipientId = message.recipientId,
+                            recipientName = message.recipientName,
+                            recipientProfileImg = null,
+                            lastMessage = tombstoneText
+                        )
+                    }
+                }
+            },
+            onError = { e ->
+                Log.e(TAG, "Failed to delete for everyone on Firebase: ${e.message}")
+            }
+        )
+    }
+
+    suspend fun deleteMessageForMe(message: TextMessage) {
+        val currentUserId = mAuth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
+
+        // 1. Remove from local Room cache for current user
+        msgDao.deleteMessageById(message.id)
+
+        // 2. Remove node under Sender: $currentUserId path in Realtime Database
+        server.deleteMessageForMeOnFirebase(
+            currentUserId = currentUserId,
+            recipientId = if (message.senderId == currentUserId) message.recipientId else message.senderId,
+            messageId = message.id,
+            onSuccess = {
+                repositoryScope.launch {
+                    val newest = msgDao.getNewestMessage(message.channelId)
+                    val previewText = newest?.messageText ?: ""
+                    server.updateOwnChatChannel(
+                        ownerUserId = currentUserId,
+                        otherUserId = if (message.senderId == currentUserId) message.recipientId else message.senderId,
+                        otherUserName = if (message.senderId == currentUserId) message.recipientName else message.senderName,
+                        lastMessage = previewText,
+                        lastMessageSenderId = newest?.senderId ?: currentUserId
+                    )
+                }
+            },
+            onError = { e ->
+                Log.e(TAG, "Failed to delete for me on Firebase: ${e.message}")
+            }
+        )
+    }
+
     /**
      * Mark messages as read
      */

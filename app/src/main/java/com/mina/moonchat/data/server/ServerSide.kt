@@ -335,6 +335,69 @@ class ServerSide {
         }
     }
 
+    fun editMessageOnFirebase(
+        senderId: String,
+        recipientId: String,
+        messageId: String,
+        newText: String,
+        editedAtMs: Long = System.currentTimeMillis(),
+        onSuccess: () -> Unit = {},
+        onError: (Exception) -> Unit = {}
+    ) {
+        val channelId = getChatChannelId(senderId, recipientId)
+        val updates = hashMapOf<String, Any>(
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/text" to newText,
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/isEdited" to true,
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/editedAt" to editedAtMs,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/text" to newText,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/isEdited" to true,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/editedAt" to editedAtMs
+        )
+        messagesRef.updateChildren(updates)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onError(it) }
+    }
+
+    fun deleteMessageForEveryoneOnFirebase(
+        senderId: String,
+        recipientId: String,
+        messageId: String,
+        tombstoneText: String = "This message was deleted",
+        onSuccess: () -> Unit = {},
+        onError: (Exception) -> Unit = {}
+    ) {
+        val channelId = getChatChannelId(senderId, recipientId)
+        val updates = hashMapOf<String, Any?>(
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/text" to tombstoneText,
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/isDeletedForEveryone" to true,
+            "Sender: $senderId/ChannelID: $channelId/Messages/$messageId/media" to null,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/text" to tombstoneText,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/isDeletedForEveryone" to true,
+            "Sender: $recipientId/ChannelID: $channelId/Messages/$messageId/media" to null
+        )
+        messagesRef.updateChildren(updates)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onError(it) }
+    }
+
+    fun deleteMessageForMeOnFirebase(
+        currentUserId: String,
+        recipientId: String,
+        messageId: String,
+        onSuccess: () -> Unit = {},
+        onError: (Exception) -> Unit = {}
+    ) {
+        val channelId = getChatChannelId(currentUserId, recipientId)
+        messagesRef
+            .child("Sender: $currentUserId")
+            .child("ChannelID: $channelId")
+            .child("Messages")
+            .child(messageId)
+            .removeValue()
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onError(it) }
+    }
+
     /**
      * Get chat list from Firestore
      */

@@ -9,7 +9,6 @@ import com.mina.moonchat.data.dto.AuthUserDTO
 import com.mina.moonchat.data.dto.MessagesDTO
 import com.mina.moonchat.data.dto.UserInfoDTO
 
-
 private const val DATABASE_NAME = "asteroids_database"
 
 val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
@@ -30,13 +29,20 @@ val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
     }
 }
 
-@Database(entities = [UserInfoDTO::class, AuthUserDTO::class, MessagesDTO::class], version = 4, exportSchema = false)
+val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN is_edited INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN edited_at INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN is_deleted_for_everyone INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+@Database(entities = [UserInfoDTO::class, AuthUserDTO::class, MessagesDTO::class], version = 5, exportSchema = false)
 @TypeConverters(Converters::class)
-abstract class UserDatabase: RoomDatabase() {
+abstract class UserDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun authDao(): AuthDao
     abstract fun messageDao(): MessageDao
-
 
     companion object {
         @Volatile
@@ -45,8 +51,6 @@ abstract class UserDatabase: RoomDatabase() {
         fun getDatabase(
             context: Context
         ): UserDatabase {
-            // if the INSTANCE is not null, then return it,
-            // if it is, then create the database
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
@@ -55,15 +59,13 @@ abstract class UserDatabase: RoomDatabase() {
                 )
                     .addMigrations(MIGRATION_2_3)
                     .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
 
                 INSTANCE = instance
-                // return instance
                 instance
             }
         }
-
-
     }
 }
