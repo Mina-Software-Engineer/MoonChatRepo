@@ -32,6 +32,27 @@ object NotificationHelper {
     private val shownMessageIds = Collections.synchronizedSet(LinkedHashSet<String>())
     private val unreadMessagesBySender = ConcurrentHashMap<String, MutableList<String>>()
 
+    fun createNotificationChannel(context: Context = MoonChat.instance) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = CHANNEL_DESC
+                    enableLights(true)
+                    enableVibration(true)
+                }
+                notificationManager.createNotificationChannel(channel)
+                Log.d(TAG, "Registered Notification Channel: $CHANNEL_ID")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creating notification channel: ${e.message}")
+            }
+        }
+    }
+
     fun clearUnreadForSender(senderId: String?) {
         if (senderId == null) return
         unreadMessagesBySender.remove(senderId)

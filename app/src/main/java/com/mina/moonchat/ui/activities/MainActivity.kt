@@ -76,11 +76,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleNotificationIntent(intent: Intent?) {
-        val senderId = intent?.getStringExtra("senderId") ?: return
+        if (intent == null) return
+
+        val navTarget = intent.getStringExtra("navTarget")
+        if (!navTarget.isNullOrBlank()) {
+            intent.removeExtra("navTarget")
+            if (navTarget == "friends") {
+                navigateToFriends()
+                return
+            }
+        }
+
+        val senderId = intent.getStringExtra("senderId")
+        if (senderId.isNullOrBlank()) return
+
         val senderName = intent.getStringExtra("senderName") ?: ""
 
-        // Clear extra so it doesn't re-trigger on config changes
+        // Clear intent extras immediately so activity recreation does not re-trigger navigation
         intent.removeExtra("senderId")
+        intent.removeExtra("senderName")
+        intent.removeExtra("type")
+
+        val currentUserId = mAuth.currentUser?.uid
+        if (currentUserId == null || senderId == currentUserId) return
+
+        val navHostFragment = supportFragmentManager
+            .findFragmentById(R.id.fragmentContainerView3) as? NavHostFragment ?: return
+        val navController = navHostFragment.navController
+
+        // Prevent duplicate navigation if already on the chat screen for this exact sender
+        if (navController.currentDestination?.id == R.id.chatFragment) {
+            val currentArgUser = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                navController.currentBackStackEntry?.arguments?.getParcelable("user", User::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                navController.currentBackStackEntry?.arguments?.getParcelable("user")
+            }
+            val currentChatSenderId = currentArgUser?.userId?.ifEmpty { currentArgUser.id }
+            if (currentChatSenderId == senderId) {
+                Log.d("MainActivity", "Already on chatFragment for senderId: $senderId, skipping duplicate navigation")
+                return
+            }
+        }
 
         firestore.collection("Users").document(senderId).get()
             .addOnSuccessListener { doc ->
@@ -99,6 +136,19 @@ class MainActivity : AppCompatActivity() {
                 )
                 navigateToChat(user)
             }
+    }
+
+    private fun navigateToFriends() {
+        try {
+            val navHostFragment = supportFragmentManager
+                .findFragmentById(R.id.fragmentContainerView3) as? NavHostFragment ?: return
+            val navController = navHostFragment.navController
+            if (navController.currentDestination?.id != R.id.addFriendsFragment) {
+                navController.navigate(R.id.addFriendsFragment)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error navigating to friends: ${e.message}")
+        }
     }
 
     private fun navigateToChat(user: User) {

@@ -127,7 +127,9 @@ object FcmNotificationSender {
             .document(recipientId)
             .get()
             .addOnSuccessListener { document ->
-                val fcmToken = document.getString("fcmToken") ?: ""
+                val fcmToken = document.getString("fcmToken")?.takeIf { it.isNotBlank() }
+                    ?: document.getString("token")?.takeIf { it.isNotBlank() }
+                    ?: ""
                 if (fcmToken.isNotBlank()) {
                     thread {
                         val tokenAndProject = getFreshAccessToken(MoonChat.instance)
@@ -189,8 +191,20 @@ object FcmNotificationSender {
             conn.setRequestProperty("Authorization", "Bearer $bearerToken")
             conn.doOutput = true
 
+            val notificationTitle = when (type) {
+                "FRIEND_REQUEST" -> "New Friend Request"
+                "FRIEND_REQUEST_ACCEPTED" -> "Friend Request Accepted"
+                else -> senderName
+            }
+
             val messageObj = JSONObject().apply {
                 put("token", fcmToken)
+
+                val notificationObj = JSONObject().apply {
+                    put("title", notificationTitle)
+                    put("body", messageText)
+                }
+                put("notification", notificationObj)
 
                 val data = JSONObject().apply {
                     put("senderId", senderId)
@@ -203,8 +217,17 @@ object FcmNotificationSender {
                 }
                 put("data", data)
 
+                val androidNotification = JSONObject().apply {
+                    put("sound", "default")
+                    put("channel_id", NotificationHelper.CHANNEL_ID)
+                    put("click_action", "android.intent.action.MAIN")
+                    put("default_sound", true)
+                    put("default_vibrate_timings", true)
+                    put("notification_priority", "PRIORITY_HIGH")
+                }
                 val androidConfig = JSONObject().apply {
                     put("priority", "HIGH")
+                    put("notification", androidNotification)
                 }
                 put("android", androidConfig)
             }
@@ -276,9 +299,25 @@ object FcmNotificationSender {
             conn.setRequestProperty("Authorization", "key=$serverKey")
             conn.doOutput = true
 
+            val notificationTitle = when (type) {
+                "FRIEND_REQUEST" -> "New Friend Request"
+                "FRIEND_REQUEST_ACCEPTED" -> "Friend Request Accepted"
+                else -> senderName
+            }
+
             val json = JSONObject().apply {
                 put("to", fcmToken)
                 put("priority", "high")
+                put("content_available", true)
+
+                val notificationObj = JSONObject().apply {
+                    put("title", notificationTitle)
+                    put("body", messageText)
+                    put("sound", "default")
+                    put("channel_id", NotificationHelper.CHANNEL_ID)
+                    put("click_action", "android.intent.action.MAIN")
+                }
+                put("notification", notificationObj)
 
                 val data = JSONObject().apply {
                     put("senderId", senderId)

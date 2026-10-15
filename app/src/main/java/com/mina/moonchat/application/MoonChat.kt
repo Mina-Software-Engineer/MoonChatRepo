@@ -25,6 +25,8 @@ class MoonChat : Application() {
         super.onCreate()
         instance = this
 
+        com.mina.moonchat.utils.NotificationHelper.createNotificationChannel(this)
+
         val myModule = module {
             single { ProfileViewModel(get()) }
             single { SignUpViewModel(get()) }

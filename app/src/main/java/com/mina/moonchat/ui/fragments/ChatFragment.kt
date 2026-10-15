@@ -1,7 +1,10 @@
 package com.mina.moonchat.ui.fragments
 
 import android.os.Bundle
+import android.content.BroadcastReceiver
 import android.util.Log
+import android.content.Intent
+import android.content.IntentFilter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,9 +15,13 @@ import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.paging.LoadState
+import androidx.paging.TerminalSeparatorType
+import androidx.paging.insertSeparators
+import androidx.paging.map
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.transition.TransitionInflater
@@ -25,13 +32,19 @@ import com.mina.moonchat.adapters.MessageAdapter
 import com.mina.moonchat.base.BaseFragment
 import com.mina.moonchat.databinding.FragmentChatBinding
 import com.mina.moonchat.models.User
+import com.mina.moonchat.models.ChatTimelineItem
+import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.utils.ActiveChatManager
+import com.mina.moonchat.utils.ChatDateSeparator
 import com.mina.moonchat.utils.NotificationHelper
 import com.mina.moonchat.viewmodels.ChatViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 
 class ChatFragment : BaseFragment() {
@@ -50,6 +63,18 @@ class ChatFragment : BaseFragment() {
     private var shouldScrollToBottom = true
     private var pendingBottomScroll = false
     private var activeRecipientUser: User? = null
+    private var dateReceiverRegistered = false
+    private val dateChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val shouldRefresh = when (intent?.action) {
+                Intent.ACTION_TIME_CHANGED, Intent.ACTION_DATE_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> true
+                else -> false
+            }
+            if (shouldRefresh) {
+                if (::messageAdapter.isInitialized) messageAdapter.refresh()
+            }
+        }
+    }
 
     private val imagePicker = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -316,7 +341,29 @@ class ChatFragment : BaseFragment() {
         messagesJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 _viewModel.getMessageStream(recipientId).collectLatest { pagingData ->
-                    messageAdapter.submitData(pagingData)
+                    val now = Date()
+                    val timeZone = TimeZone.getDefault()
+                    val locale = Locale.getDefault()
+                    val timeline = pagingData
+                        .map<TextMessage, ChatTimelineItem> { ChatTimelineItem.MessageItem(it) }
+                        .insertSeparators(terminalSeparatorType = TerminalSeparatorType.FULLY_COMPLETE) { before, after ->
+                            val newer = before as? ChatTimelineItem.MessageItem
+                            val older = after as? ChatTimelineItem.MessageItem
+                            when {
+                                newer == null -> null
+                                older == null || !ChatDateSeparator.isSameLocalDay(
+                                    newer.message.date,
+                                    older.message.date,
+                                    timeZone,
+                                    locale
+                                ) -> ChatTimelineItem.DateSeparator(
+                                    dayKey = ChatDateSeparator.localDayKey(newer.message.date, timeZone, locale),
+                                    label = ChatDateSeparator.label(newer.message.date, now, timeZone, locale)
+                                )
+                                else -> null
+                            }
+                        }
+                    messageAdapter.submitData(timeline)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error collecting messages: ${e.message}")
@@ -347,6 +394,20 @@ class ChatFragment : BaseFragment() {
 
     override fun onStart() {
         super.onStart()
+        if (!dateReceiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_TIME_CHANGED)
+                addAction(Intent.ACTION_DATE_CHANGED)
+                addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            }
+            ContextCompat.registerReceiver(
+                requireContext(),
+                dateChangeReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            dateReceiverRegistered = true
+        }
         try {
             val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
             ActiveChatManager.activeRecipientId = recipientUser.userId
@@ -356,6 +417,10 @@ class ChatFragment : BaseFragment() {
     }
 
     override fun onStop() {
+        if (dateReceiverRegistered) {
+            requireContext().unregisterReceiver(dateChangeReceiver)
+            dateReceiverRegistered = false
+        }
         try {
             val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
             if (ActiveChatManager.activeRecipientId == recipientUser.userId) {

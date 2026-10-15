@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
@@ -19,31 +20,41 @@ import com.mina.moonchat.databinding.RecipientItemImageMessageBinding
 import com.mina.moonchat.databinding.RecipientItemTextMessageBinding
 import com.mina.moonchat.databinding.SenderItemImageMessageBinding
 import com.mina.moonchat.databinding.SenderItemTextMessageBinding
+import com.mina.moonchat.models.ChatTimelineItem
 import com.mina.moonchat.models.MessageDeliveryState
 import com.mina.moonchat.models.MessageType
 import com.mina.moonchat.models.TextMessage
+import com.mina.moonchat.utils.ChatDateLabel
 import java.io.File
 
 class MessageAdapter(private val currentUserId: String) :
-    PagingDataAdapter<TextMessage, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
+    PagingDataAdapter<ChatTimelineItem, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
 
     companion object {
         private const val TYPE_SENDER = 0
         private const val TYPE_RECIPIENT = 1
         private const val TYPE_SENDER_IMAGE = 2
         private const val TYPE_RECIPIENT_IMAGE = 3
+        private const val TYPE_DATE_SEPARATOR = 4
 
-        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<TextMessage>() {
-            override fun areItemsTheSame(oldItem: TextMessage, newItem: TextMessage): Boolean =
-                oldItem.id == newItem.id
+        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<ChatTimelineItem>() {
+            override fun areItemsTheSame(oldItem: ChatTimelineItem, newItem: ChatTimelineItem): Boolean = when {
+                oldItem is ChatTimelineItem.MessageItem && newItem is ChatTimelineItem.MessageItem ->
+                    oldItem.message.id == newItem.message.id
+                oldItem is ChatTimelineItem.DateSeparator && newItem is ChatTimelineItem.DateSeparator ->
+                    oldItem.dayKey == newItem.dayKey
+                else -> false
+            }
 
-            override fun areContentsTheSame(oldItem: TextMessage, newItem: TextMessage): Boolean =
+            override fun areContentsTheSame(oldItem: ChatTimelineItem, newItem: ChatTimelineItem): Boolean =
                 oldItem == newItem
         }
     }
 
     override fun getItemViewType(position: Int): Int {
-        val message = getItem(position)
+        val item = getItem(position)
+        if (item is ChatTimelineItem.DateSeparator) return TYPE_DATE_SEPARATOR
+        val message = (item as? ChatTimelineItem.MessageItem)?.message
         val isSender = message?.senderId == currentUserId
         return when {
             message?.type == MessageType.IMAGE && isSender -> TYPE_SENDER_IMAGE
@@ -59,12 +70,20 @@ class MessageAdapter(private val currentUserId: String) :
             TYPE_SENDER -> SenderViewHolder(SenderItemTextMessageBinding.inflate(inflater, parent, false))
             TYPE_SENDER_IMAGE -> SenderImageViewHolder(SenderItemImageMessageBinding.inflate(inflater, parent, false))
             TYPE_RECIPIENT_IMAGE -> RecipientImageViewHolder(RecipientItemImageMessageBinding.inflate(inflater, parent, false))
+            TYPE_DATE_SEPARATOR -> DateSeparatorViewHolder(
+                inflater.inflate(R.layout.item_message_date_separator, parent, false)
+            )
             else -> RecipientViewHolder(RecipientItemTextMessageBinding.inflate(inflater, parent, false))
         }
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        val message = getItem(position) ?: return
+        val item = getItem(position) ?: return
+        if (holder is DateSeparatorViewHolder) {
+            (item as? ChatTimelineItem.DateSeparator)?.let(holder::bind)
+            return
+        }
+        val message = (item as? ChatTimelineItem.MessageItem)?.message ?: return
         when (holder) {
             is SenderViewHolder -> holder.bind(message)
             is RecipientViewHolder -> holder.bind(message)
@@ -173,7 +192,7 @@ class MessageAdapter(private val currentUserId: String) :
                         onMessageClickListener?.onRetryClick(message) { queued ->
                             val currentPosition = bindingAdapterPosition
                             if (currentPosition != RecyclerView.NO_POSITION &&
-                                getItem(currentPosition)?.id == boundMessageId && message.isRetryable()
+                                (getItem(currentPosition) as? ChatTimelineItem.MessageItem)?.message?.id == boundMessageId && message.isRetryable()
                             ) {
                                 isEnabled = true
                                 setText(R.string.retry_message)
@@ -241,7 +260,9 @@ class MessageAdapter(private val currentUserId: String) :
                         val boundMessageId = message.id
                         onMessageClickListener?.onRetryClick(message) { queued ->
                             val position = bindingAdapterPosition
-                            if (position != RecyclerView.NO_POSITION && getItem(position)?.id == boundMessageId) {
+                            if (position != RecyclerView.NO_POSITION &&
+                                (getItem(position) as? ChatTimelineItem.MessageItem)?.message?.id == boundMessageId
+                            ) {
                                 isEnabled = true
                                 setText(R.string.retry_message)
                                 if (!queued) visibility = View.VISIBLE
@@ -275,6 +296,18 @@ class MessageAdapter(private val currentUserId: String) :
                 R.anim.message_popup
             )
             holder.itemView.startAnimation(animation)
+        }
+    }
+
+    inner class DateSeparatorViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val labelView: TextView = itemView.findViewById(R.id.date_separator_text)
+
+        fun bind(separator: ChatTimelineItem.DateSeparator) {
+            labelView.text = when (val label = separator.label) {
+                ChatDateLabel.Today -> itemView.context.getString(R.string.today)
+                ChatDateLabel.Yesterday -> itemView.context.getString(R.string.yesterday)
+                is ChatDateLabel.Absolute -> label.value
+            }
         }
     }
 

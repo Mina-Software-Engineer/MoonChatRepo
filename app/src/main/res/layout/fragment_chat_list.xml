@@ -7,9 +7,77 @@
     android:background="@color/chat_list_background_color"
     tools:context=".ui.fragments.ChatListFragment">
 
+    <EditText
+        android:id="@+id/chat_search_input"
+        android:layout_width="0dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="8dp"
+        android:autofillHints=""
+        android:background="@drawable/chat_edit_text_background"
+        android:hint="@string/search_conversations"
+        android:imeOptions="actionDone"
+        android:inputType="text"
+        android:maxLines="1"
+        android:paddingHorizontal="14dp"
+        android:textColor="@color/white"
+        android:textColorHint="@color/gray"
+        android:textSize="16sp"
+        app:layout_constraintEnd_toStartOf="@id/clear_search_button"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ImageButton
+        android:id="@+id/clear_search_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="12dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/clear_search"
+        android:src="@drawable/ic_close"
+        android:visibility="gone"
+        app:tint="@color/white"
+        app:layout_constraintBottom_toBottomOf="@id/chat_search_input"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/chat_search_input"
+        tools:visibility="visible" />
+
+    <LinearLayout
+        android:id="@+id/chat_list_status_container"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/chat_search_input"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/chat_list_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            tools:text="Offline — showing saved conversations" />
+
+        <Button
+            android:id="@+id/chat_list_retry_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="40dp"
+            android:text="@string/retry"
+            android:textAllCaps="false" />
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/chat_recyclerView"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="0dp"
         android:clipToPadding="false"
         android:layoutAnimation="@anim/layout_animation_fall_down"
@@ -18,8 +86,47 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/chat_list_status_container"
         tools:listitem="@layout/chat_list_item" />
+
+    <ProgressBar
+        android:id="@+id/chat_list_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/chat_recyclerView"
+        app:layout_constraintEnd_toEndOf="@id/chat_recyclerView"
+        app:layout_constraintStart_toStartOf="@id/chat_recyclerView"
+        app:layout_constraintTop_toTopOf="@id/chat_recyclerView" />
+
+    <TextView
+        android:id="@+id/chat_list_empty_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="32dp"
+        android:gravity="center"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/clear_search_empty_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/chat_recyclerView"
+        app:layout_constraintVertical_chainStyle="packed"
+        tools:text="No conversations yet" />
+
+    <Button
+        android:id="@+id/clear_search_empty_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/clear_search"
+        android:textAllCaps="false"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/chat_recyclerView"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/chat_list_empty_text" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/add_chat_btn"
@@ -27,6 +134,7 @@
         android:layout_height="wrap_content"
         android:layout_marginEnd="20dp"
         android:layout_marginBottom="80dp"
+        android:contentDescription="@string/add_friend"
         android:src="@drawable/ic_add_chat"
         app:backgroundTint="@color/indigo_gradient_start"
         app:elevation="6dp"

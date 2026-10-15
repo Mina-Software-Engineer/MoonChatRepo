@@ -19,6 +19,7 @@
         <activity
             android:name=".ui.activities.IntroActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/splashScreenTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -28,7 +29,8 @@
         </activity>
         <activity
             android:name=".ui.activities.MainActivity"
-            android:exported="false" />
+            android:exported="true"
+            android:launchMode="singleTop" />
 
         <service
             android:name=".data.server.MyFirebaseMessagingService"
@@ -48,13 +50,16 @@
             android:name=".utils.FriendRequestActionReceiver"
             android:exported="false" />
 
-        <!-- Default notification metadata for FCM background notifications -->
+        <!-- Default notification metadata for FCM background/killed notifications -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_app_logo" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="chat_messages_channel" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/primary" />
 
     </application>
 

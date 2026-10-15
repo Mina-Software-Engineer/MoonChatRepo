@@ -1,6 +1,7 @@
 package com.mina.moonchat.viewmodels
 
 import android.app.Application
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.google.firebase.database.DataSnapshot
@@ -9,15 +10,25 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.Query
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.mina.moonchat.application.MoonChat
+import com.mina.moonchat.R
 import com.mina.moonchat.base.BaseViewModel
 import com.mina.moonchat.models.ChatItem
+import com.mina.moonchat.models.ChatListLoadState
+import com.mina.moonchat.models.UnreadMessageRecord
 import com.mina.moonchat.models.TextMessage
 import com.mina.moonchat.models.User
+import com.mina.moonchat.models.countUnreadIncomingMessages
+import com.mina.moonchat.models.filterChatsByPartnerName
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,6 +38,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     (app as MoonChat).repo
 ) {
 
+    private val appContext = app.applicationContext
     private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
     private val presenceRef by lazy { FirebaseDatabase.getInstance().getReference("Users states") }
     private val messagesRootRef by lazy { FirebaseDatabase.getInstance().getReference("Message") }
@@ -43,13 +55,25 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     private var lastMessageListener: ValueEventListener? = null
 
     private var latestChatDocuments: List<com.google.firebase.firestore.DocumentSnapshot> = emptyList()
+    private var hasChatSnapshot = false
     private var userOnlineStates: Map<String, Boolean> = emptyMap()
     private var typingUsersMap: Map<String, Boolean> = emptyMap()
     private var latestMessagesByChannel: Map<String, LastMessagePreview> = emptyMap()
     private var unreadCountsByChannel: Map<String, Int> = emptyMap()
 
-    private val _chatItems = MutableStateFlow<List<ChatItem>>(emptyList())
-    val chatItems: StateFlow<List<ChatItem>> = _chatItems.asStateFlow()
+    private val allChatItems = MutableStateFlow<List<ChatItem>>(emptyList())
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    private val _loadState = MutableStateFlow(ChatListLoadState.LOADING)
+    val loadState: StateFlow<ChatListLoadState> = _loadState.asStateFlow()
+    val uiState = combine(allChatItems, _searchQuery, _loadState) { all, query, status ->
+        ChatListUiState(
+            query = query,
+            conversations = filterChatsByPartnerName(all, query),
+            allConversationCount = all.size,
+            loadState = status
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatListUiState())
 
     private val _selectedChatUser = MutableLiveData<User?>()
     val selectedChatUser: LiveData<User?> = _selectedChatUser
@@ -62,18 +86,47 @@ class ChatListViewModel(app: Application) : BaseViewModel(
     }
 
     private fun fetchChats() {
-        val currentUserId = mAuth.currentUser?.uid ?: return
+        val currentUserId = mAuth.currentUser?.uid ?: run {
+            _loadState.value = ChatListLoadState.ERROR
+            return
+        }
 
+        if (!hasChatSnapshot) _loadState.value = ChatListLoadState.LOADING
         chatListListener?.remove()
         chatListListener = firestore.collection("Users")
             .document(currentUserId)
             .collection("chat channel")
             .orderBy("date", com.google.firebase.firestore.Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) return@addSnapshotListener
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+                if (error != null) {
+                    _loadState.value = if (
+                        latestChatDocuments.isNotEmpty() &&
+                        error is FirebaseFirestoreException &&
+                        error.code == FirebaseFirestoreException.Code.UNAVAILABLE
+                    ) ChatListLoadState.OFFLINE_WITH_CACHE else ChatListLoadState.ERROR
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) {
+                    _loadState.value = ChatListLoadState.ERROR
+                    return@addSnapshotListener
+                }
                 latestChatDocuments = snapshot?.documents ?: emptyList()
+                hasChatSnapshot = true
+                _loadState.value = if (snapshot.metadata.isFromCache) {
+                    ChatListLoadState.OFFLINE_WITH_CACHE
+                } else {
+                    ChatListLoadState.READY
+                }
                 publishChats()
             }
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun retryLoadingChats() {
+        fetchChats()
     }
 
     private fun observeUsersPresence() {
@@ -151,7 +204,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                         ?: continue
 
                     val messagesSnapshot = channelSnapshot.child("Messages")
-                    var unreadCount = 0
+                    val unreadRecords = mutableListOf<UnreadMessageRecord>()
                     var latestMessage: TextMessage? = null
 
                     for (messageSnapshot in messagesSnapshot.children) {
@@ -163,8 +216,9 @@ class ChatListViewModel(app: Application) : BaseViewModel(
 
                         val fullMsg = msg.copy(isRead = msgIsRead, isDelivered = msgIsDelivered)
 
-                        if (fullMsg.senderId != currentUserId && !fullMsg.isRead) {
-                            unreadCount++
+                        val messageId = messageSnapshot.key.orEmpty()
+                        if (messageId.isNotBlank()) {
+                            unreadRecords += UnreadMessageRecord(messageId, fullMsg.senderId, fullMsg.isRead)
                         }
 
                         if (latestMessage == null || fullMsg.date.time > latestMessage.date.time) {
@@ -177,10 +231,13 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                             text = latestMessage.text,
                             timestamp = latestMessage.date.time,
                             status = latestMessage.deliveryStatusText(),
-                            senderId = latestMessage.senderId
+                            senderId = latestMessage.senderId,
+                            type = latestMessage.type
                         )
                     }
-                    tempUnreadCounts[channelId] = unreadCount
+                    // Canonical unread path: count unique incoming message IDs in the current user's RTDB mirror.
+                    // Listener callbacks never increment a counter, so global/active listener echoes cannot inflate it.
+                    tempUnreadCounts[channelId] = countUnreadIncomingMessages(unreadRecords, currentUserId)
                 }
 
                 latestMessagesByChannel = tempLastMessages
@@ -220,6 +277,13 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                 else -> ""
             }
 
+            val preview = when {
+                latestMessage?.type == com.mina.moonchat.models.MessageType.IMAGE ->
+                    appContext.getString(R.string.chat_preview_photo)
+                !latestMessage?.text.isNullOrBlank() -> latestMessage?.text.orEmpty()
+                else -> document.getString("lastMessage") ?: ""
+            }
+
             ChatItem(
                 chatId = document.id,
                 recipientId = recipientId,
@@ -227,7 +291,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
                 profileImg = document.getString("profileImg"),
                 onlineState = userOnlineStates[recipientId] ?: false,
                 time = effectiveTimestamp.takeIf { it > 0L }?.let { formatChatTime(Date(it)) }.orEmpty(),
-                lastMessage = latestMessage?.text ?: document.getString("lastMessage") ?: "",
+                lastMessage = preview,
                 hasUnreadIncoming = isUnreadCalculated,
                 unreadCount = calculatedUnreadCount,
                 isTyping = typingUsersMap[recipientId] ?: false,
@@ -237,7 +301,7 @@ class ChatListViewModel(app: Application) : BaseViewModel(
             .sortedByDescending { it.second }
             .map { it.first }
 
-        _chatItems.value = chats
+        allChatItems.value = chats
     }
 
     private fun formatChatTime(date: Date): String {
@@ -272,6 +336,14 @@ class ChatListViewModel(app: Application) : BaseViewModel(
         val text: String,
         val timestamp: Long,
         val status: String = "",
-        val senderId: String = ""
+        val senderId: String = "",
+        val type: String = com.mina.moonchat.models.MessageType.TEXT
     )
 }
+
+data class ChatListUiState(
+    val query: String = "",
+    val conversations: List<ChatItem> = emptyList(),
+    val allConversationCount: Int = 0,
+    val loadState: ChatListLoadState = ChatListLoadState.LOADING
+)

@@ -86,7 +86,10 @@ class IntroActivity : AppCompatActivity() {
     }
 
     private fun openMain() {
-        startActivity(Intent(this, MainActivity::class.java))
+        val mainIntent = Intent(this, MainActivity::class.java).apply {
+            intent?.extras?.let { putExtras(it) }
+        }
+        startActivity(mainIntent)
         finish()
     }
 }
