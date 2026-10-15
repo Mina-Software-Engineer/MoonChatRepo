@@ -62,7 +62,7 @@ class ServerSide {
         }
 
         // Preserve original message creation date if set
-        val messageDate = if (message.date.time > 0) message.date else Date()
+        val messageDate = if (message.date.time > 0) message.date.time else System.currentTimeMillis()
 
         // Create message data
         val messageData = hashMapOf(

@@ -1,39 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:layout_marginEnd="8dp"
-    android:layout_marginStart="8dp"
-    android:layout_marginBottom="8dp"
-    >
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <FrameLayout
-        android:id="@+id/message_root"
-        android:layout_width="wrap_content"
+    <data>
+        <variable
+            name="message"
+            type="com.mina.moonchat.models.TextMessage" />
+    </data>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="end">
+        android:layout_marginTop="7dp">
 
-        <ImageView
-            android:id="@+id/imageView_message_image"
-            android:layout_width="256dp"
+        <LinearLayout
+            android:id="@+id/layout_bubble"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:adjustViewBounds="true"
-            android:src="@drawable/ic_image_message"
-            android:contentDescription="TODO"
-            android:layout_marginBottom="25dp"/>
+            android:background="@drawable/send_message_background"
+            android:orientation="vertical"
+            android:padding="6dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_percent="0.78">
 
-    </FrameLayout>
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/image_view_message_image"
+                android:layout_width="256dp"
+                android:layout_height="200dp"
+                android:contentDescription="@string/chat_image_description"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_image_message"
+                app:shapeAppearanceOverlay="@style/SenderMessageImageView"
+                tools:ignore="ImageContrastCheck" />
 
-    <TextView
-        android:id="@+id/textView_message_time"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="8dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginBottom="4dp"
-        android:layout_gravity="end|bottom"
-        android:text="3/15/2018/ 3:00 PM"
-        android:textColor="@color/black"/>
+            <LinearLayout
+                android:id="@+id/layout_time_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical|end"
+                android:orientation="horizontal"
+                android:paddingTop="4dp">
 
-</FrameLayout>
+                <TextView
+                    android:id="@+id/text_view_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/gray"
+                    android:textSize="11sp"
+                    app:timeTextConvert="@{message.date}"
+                    tools:text="12:12 AM" />
+
+                <ImageView
+                    android:id="@+id/image_view_status"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_marginStart="5dp"
+                    android:contentDescription="@string/message_status_sent"
+                    android:scaleType="centerInside"
+                    tools:src="@drawable/ic_tick" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/failed_message_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/message_failed_to_send"
+                android:textColor="@color/error"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/retry_message_button"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:backgroundTint="@color/btn_login"
+                android:contentDescription="@string/retry_failed_message"
+                android:minWidth="48dp"
+                android:minHeight="48dp"
+                android:text="@string/retry_message"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</layout>

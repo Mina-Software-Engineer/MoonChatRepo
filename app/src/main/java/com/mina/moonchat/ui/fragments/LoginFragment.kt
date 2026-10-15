@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.transition.TransitionInflater
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -30,11 +29,6 @@ class LoginFragment : BaseFragment() {
 
     private var _binding: FragmentLoginBinding? = null
     private val binding get() = _binding!!
-
-    override fun onStart() {
-        super.onStart()
-        checkAuthentication()
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -247,31 +241,6 @@ class LoginFragment : BaseFragment() {
     private fun navigateToSignUp() {
         _viewModel.navigationCommand.value =
             NavigationCommand.To(LoginFragmentDirections.actionLoginFragmentToSignUpFragment())
-    }
-
-    private fun checkAuthentication() {
-        val firebaseUser = FirebaseAuth.getInstance().currentUser ?: return
-
-        firebaseUser.reload().addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                if (firebaseUser.isEmailVerified) {
-                    val intentToMain = Intent(requireActivity(), MainActivity::class.java)
-                    startActivity(intentToMain)
-                    requireActivity().finish()
-                    Log.d("LoginFragment", "User is verified. Entering MainActivity.")
-                } else {
-                    Log.d("LoginFragment", "User is unverified. Denying automatic entry.")
-                    FirebaseAuth.getInstance().signOut()
-                    Toast.makeText(
-                        requireContext(),
-                        getString(R.string.email_not_verified_error),
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            } else {
-                FirebaseAuth.getInstance().signOut()
-            }
-        }
     }
 
     override fun onDestroyView() {

@@ -87,7 +87,25 @@ data class MessagesDTO(
     val retryCount: Int = 0,
 
     @ColumnInfo(name = "last_attempt_time")
-    val lastAttemptTime: Long = 0
+    val lastAttemptTime: Long = 0,
+
+    @ColumnInfo(name = "media_json")
+    val mediaJson: String? = null,
+
+    @ColumnInfo(name = "local_image_path")
+    val localImagePath: String? = null,
+
+    @ColumnInfo(name = "local_image_mime_type")
+    val localImageMimeType: String? = null,
+
+    @ColumnInfo(name = "local_image_size")
+    val localImageSize: Long? = null,
+
+    @ColumnInfo(name = "local_image_width")
+    val localImageWidth: Int? = null,
+
+    @ColumnInfo(name = "local_image_height")
+    val localImageHeight: Int? = null
 )
 
 enum class MessageStatus {
@@ -114,7 +132,13 @@ fun MessagesDTO.toTextMessage(): TextMessage {
         isRead = this.isRead,
         isDelivered = this.isDelivered,
         retryCount = this.retryCount,
-        lastAttemptTime = this.lastAttemptTime
+        lastAttemptTime = this.lastAttemptTime,
+        media = this.mediaJson?.let { com.mina.moonchat.models.ChatImageMedia.fromJson(it) },
+        localImagePath = this.localImagePath,
+        localImageMimeType = this.localImageMimeType,
+        localImageSize = this.localImageSize,
+        localImageWidth = this.localImageWidth,
+        localImageHeight = this.localImageHeight
     )
 }
 
@@ -139,6 +163,12 @@ fun TextMessage.toMessagesDTO(defaultStatus: MessageStatus = MessageStatus.SENT)
         isRead = this.isRead,
         isDelivered = this.isDelivered,
         retryCount = this.retryCount,
-        lastAttemptTime = this.lastAttemptTime
+        lastAttemptTime = this.lastAttemptTime,
+        mediaJson = this.media?.toJson(),
+        localImagePath = this.localImagePath,
+        localImageMimeType = this.localImageMimeType,
+        localImageSize = this.localImageSize,
+        localImageWidth = this.localImageWidth,
+        localImageHeight = this.localImageHeight
     )
 }

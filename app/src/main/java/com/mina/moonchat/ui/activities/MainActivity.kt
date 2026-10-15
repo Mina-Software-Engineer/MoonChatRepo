@@ -56,6 +56,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (mAuth.currentUser?.isEmailVerified != true) {
+            startActivity(Intent(this, IntroActivity::class.java))
+            finish()
+            return
+        }
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -112,6 +118,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (mAuth.currentUser?.isEmailVerified != true) {
+            if (!isFinishing) {
+                startActivity(Intent(this, IntroActivity::class.java))
+                finish()
+            }
+            return
+        }
+
         startPresenceTracking()
         val repository = (application as? MoonChat)?.repo
         repository?.startGlobalIncomingMessageListener()

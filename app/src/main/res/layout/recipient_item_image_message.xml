@@ -1,37 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:layout_marginEnd="8dp"
-    android:layout_marginStart="8dp"
-    android:layout_marginBottom="8dp"
-    >
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <FrameLayout
-        android:id="@+id/message_root"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content">
+    <data>
+        <variable
+            name="message"
+            type="com.mina.moonchat.models.TextMessage" />
+    </data>
 
-        <ImageView
-            android:id="@+id/imageView_rec_message_image"
-            android:layout_width="256dp"
-            android:layout_height="wrap_content"
-            android:adjustViewBounds="true"
-            android:src="@drawable/ic_image_message"
-            android:contentDescription="TODO"
-            android:layout_marginBottom="25dp"/>
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp">
 
-        <TextView
-            android:id="@+id/textView_rec_message_time"
+        <LinearLayout
+            android:id="@+id/layout_bubble"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_marginStart="8dp"
-            android:layout_marginBottom="4dp"
-            android:layout_gravity="start|bottom"
-            android:text="3/15/2018/ 3:00 PM"
-            android:textColor="@color/black"/>
+            android:background="@drawable/recipient_item_background"
+            android:orientation="vertical"
+            android:padding="6dp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_percent="0.78">
 
-    </FrameLayout>
-</FrameLayout>
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/image_view_rec_message_image"
+                android:layout_width="256dp"
+                android:layout_height="200dp"
+                android:contentDescription="@string/chat_image_description"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_image_message"
+                app:shapeAppearanceOverlay="@style/RecipientMessageImageView"
+                tools:ignore="ImageContrastCheck" />
+
+            <TextView
+                android:id="@+id/text_view_rec_message_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:paddingTop="4dp"
+                android:textColor="#6B7280"
+                android:textSize="11sp"
+                app:timeTextConvert="@{message.date}"
+                tools:text="12:12 AM" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</layout>

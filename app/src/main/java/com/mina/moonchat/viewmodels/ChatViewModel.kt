@@ -1,6 +1,7 @@
 package com.mina.moonchat.viewmodels
 
 import android.app.Application
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -8,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.mina.moonchat.application.MoonChat
+import com.mina.moonchat.R
 import com.mina.moonchat.base.BaseViewModel
 import com.mina.moonchat.data.server.UserLocalRepository
 import com.google.firebase.database.DatabaseReference
@@ -239,17 +241,47 @@ class ChatViewModel(app: Application) : BaseViewModel(
         }
     }
 
+    fun sendImageMessage(recipientUser: User, imageUri: Uri) {
+        val sender = mAuth.currentUser
+        if (sender == null) {
+            _errorMessage.value = "User not logged in"
+            return
+        }
+        _isSending.value = true
+        viewModelScope.launch {
+            try {
+                val result = repository.sendImageMessage(
+                    context = MoonChat.instance,
+                    recipientId = recipientUser.userId,
+                    recipientName = recipientUser.displayName,
+                    senderName = sender.displayName.orEmpty(),
+                    source = imageUri
+                )
+                if (result.isPending()) {
+                    _errorMessage.value = MoonChat.instance.getString(R.string.image_upload_queued)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Image message could not be queued or sent: ${e.message}")
+                _errorMessage.value = e.message ?: MoonChat.instance.getString(R.string.image_upload_failed)
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+
     /**
      * Retry sending a failed message
      */
-    fun retryMessage(message: TextMessage) {
+    fun retryMessage(message: TextMessage, onFinished: (queued: Boolean) -> Unit = {}) {
         viewModelScope.launch {
             try {
                 repository.retryMessage(message)
                 Log.d(TAG, "Message retry initiated")
+                onFinished(true)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to retry message: ${e.message}")
                 _errorMessage.value = "Failed to retry message"
+                onFinished(false)
             }
         }
     }

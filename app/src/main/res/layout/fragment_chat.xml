@@ -151,13 +151,13 @@
                 android:id="@+id/message_box"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="4dp"
                 android:backgroundTint="#1F2937"
                 android:elevation="0dp"
                 app:cardCornerRadius="20dp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toStartOf="@+id/send_btn"
-                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintStart_toEndOf="@id/attach_image_btn"
                 app:layout_constraintTop_toTopOf="parent">
 
                 <androidx.constraintlayout.widget.ConstraintLayout
@@ -205,6 +205,20 @@
                         app:layout_constraintTop_toTopOf="parent" />
                 </androidx.constraintlayout.widget.ConstraintLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <ImageButton
+                android:id="@+id/attach_image_btn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/ic_back_button_selector"
+                android:contentDescription="@string/attach_image"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_image_message"
+                android:tint="@color/white"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
             <!--<com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/textView_messageBox"

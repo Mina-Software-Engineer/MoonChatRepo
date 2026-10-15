@@ -29,6 +29,23 @@
         <item name="cornerSize">50%</item>
     </style>
 
+    <!-- Message ImageView Rounded Corners -->
+    <style name="SenderMessageImageView" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">14dp</item>
+        <item name="cornerSizeTopRight">14dp</item>
+        <item name="cornerSizeBottomLeft">14dp</item>
+        <item name="cornerSizeBottomRight">4dp</item>
+    </style>
+
+    <style name="RecipientMessageImageView" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">14dp</item>
+        <item name="cornerSizeTopRight">14dp</item>
+        <item name="cornerSizeBottomLeft">4dp</item>
+        <item name="cornerSizeBottomRight">14dp</item>
+    </style>
+
     <style name="hintTheme" parent="TextAppearance.MaterialComponents.Subtitle2">
         <item name="android:textColor">@color/white</item>
     </style>

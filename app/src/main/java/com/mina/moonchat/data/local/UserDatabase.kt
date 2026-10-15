@@ -19,7 +19,18 @@ val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
     }
 }
 
-@Database(entities = [UserInfoDTO::class, AuthUserDTO::class, MessagesDTO::class], version = 3, exportSchema = false)
+val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+    override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN media_json TEXT")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN local_image_path TEXT")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN local_image_mime_type TEXT")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN local_image_size INTEGER")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN local_image_width INTEGER")
+        database.execSQL("ALTER TABLE MessageEntity ADD COLUMN local_image_height INTEGER")
+    }
+}
+
+@Database(entities = [UserInfoDTO::class, AuthUserDTO::class, MessagesDTO::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class UserDatabase: RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -43,6 +54,7 @@ abstract class UserDatabase: RoomDatabase() {
                     DATABASE_NAME
                 )
                     .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .build()
 

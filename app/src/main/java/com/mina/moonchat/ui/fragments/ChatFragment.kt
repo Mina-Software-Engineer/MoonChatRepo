@@ -7,7 +7,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import android.content.Context
+import android.net.Uri
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -46,6 +49,17 @@ class ChatFragment : BaseFragment() {
     private var messagesJob: Job? = null
     private var shouldScrollToBottom = true
     private var pendingBottomScroll = false
+    private var activeRecipientUser: User? = null
+
+    private val imagePicker = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { selectedImage: Uri? ->
+        val recipient = activeRecipientUser
+        if (selectedImage != null && recipient != null && isAdded) {
+            requestScrollToBottom(force = true)
+            _viewModel.sendImageMessage(recipient, selectedImage)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +85,7 @@ class ChatFragment : BaseFragment() {
         postponeEnterTransition()
 
         val recipientUser = ChatFragmentArgs.fromBundle(requireArguments()).user
+        activeRecipientUser = recipientUser
         _viewModel.username.value = recipientUser.displayName
         _viewModel.onlineStatus.value = recipientUser.onlineState
         _viewModel.observeRecipientPresence(recipientUser.userId)
@@ -132,8 +147,18 @@ class ChatFragment : BaseFragment() {
                         _viewModel.retryMessage(message)
                     }
                 }
-                override fun onRetryClick(message: com.mina.moonchat.models.TextMessage) {
-                    _viewModel.retryMessage(message)
+                override fun onImageClick(message: com.mina.moonchat.models.TextMessage) {
+                    com.mina.moonchat.ui.dialogs.ImageViewerDialog.show(
+                        requireContext(),
+                        message,
+                        currentUserId
+                    )
+                }
+                override fun onRetryClick(
+                    message: com.mina.moonchat.models.TextMessage,
+                    onFinished: (queued: Boolean) -> Unit
+                ) {
+                    _viewModel.retryMessage(message, onFinished)
                 }
             })
         }
@@ -218,6 +243,8 @@ class ChatFragment : BaseFragment() {
         _viewModel.isSending.observe(viewLifecycleOwner) { isSending ->
             binding.sendBtn.isEnabled = !isSending
             binding.sendBtn.alpha = if (isSending) 0.5f else 1.0f
+            binding.attachImageBtn.isEnabled = !isSending
+            binding.attachImageBtn.alpha = if (isSending) 0.5f else 1.0f
         }
 
         // Observe text changes for typing state
@@ -261,6 +288,13 @@ class ChatFragment : BaseFragment() {
                 requestScrollToBottom(force = true)
                 _viewModel.onSendClicked(recipientUser, messageText)
                 binding.textViewMessageBox.text?.clear()
+            }
+        }
+
+        binding.attachImageBtn.setOnClickListener {
+            if (_viewModel.isSending.value != true) {
+                binding.emojiPicker.visibility = View.GONE
+                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
 
@@ -335,6 +369,7 @@ class ChatFragment : BaseFragment() {
 
     override fun onDestroyView() {
         messagesJob?.cancel()
+        activeRecipientUser = null
         super.onDestroyView()
         _viewModel.stopSync()
     }

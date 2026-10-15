@@ -90,12 +90,14 @@ class ChatRemoteMediator(
                         messageType = msg.type,
                         status = if (msg.senderId == currentUserId) MessageStatus.SYNCED else MessageStatus.RECEIVED,
                         isRead = msg.isRead,
-                        isDelivered = msg.isDelivered
+                        isDelivered = msg.isDelivered,
+                        mediaJson = msg.media?.toJson()
                     )
                     if (existing != null) {
                         existing.copy(
                             isRead = existing.isRead || msg.isRead,
-                            isDelivered = existing.isDelivered || msg.isDelivered
+                            isDelivered = existing.isDelivered || msg.isDelivered,
+                            mediaJson = existing.mediaJson ?: fetchedDTO.mediaJson
                         )
                     } else {
                         fetchedDTO

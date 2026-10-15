@@ -12,6 +12,7 @@ def localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
+def chatImageWorkerUrl = localProperties.getProperty("CHAT_IMAGE_WORKER_URL", "").trim()
 
 android {
     namespace 'com.mina.moonchat'
@@ -27,6 +28,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "CLOUDINARY_CLOUD_NAME", "\"${localProperties.getProperty("CLOUDINARY_CLOUD_NAME", "")}\""
         buildConfigField "String", "CLOUDINARY_UPLOAD_PRESET", "\"${localProperties.getProperty("CLOUDINARY_UPLOAD_PRESET", "")}\""
+        buildConfigField "String", "CHAT_IMAGE_WORKER_URL", "\"${chatImageWorkerUrl}\""
     }
 
     buildTypes {
@@ -75,6 +77,7 @@ dependencies {
     implementation 'com.google.firebase:firebase-storage-ktx'
 
     // Other dependencies
+    implementation 'androidx.activity:activity-ktx:1.8.2'
     implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.9.0'

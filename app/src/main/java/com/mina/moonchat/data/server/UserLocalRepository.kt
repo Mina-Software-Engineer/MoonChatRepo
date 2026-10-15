@@ -1,5 +1,7 @@
 package com.mina.moonchat.data.server
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.paging.ExperimentalPagingApi
 import androidx.paging.Pager
@@ -22,6 +24,7 @@ import com.mina.moonchat.data.dto.toTextMessage
 import com.mina.moonchat.data.local.UserDatabase
 import com.mina.moonchat.intro_activity.data.Result
 import com.mina.moonchat.models.TextMessage
+import com.mina.moonchat.models.MessageType
 import com.mina.moonchat.utils.FcmNotificationSender
 import com.mina.moonchat.utils.NotificationHelper
 import java.util.concurrent.ConcurrentHashMap
@@ -31,6 +34,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
 
 class UserLocalRepository(
     private val db: UserDatabase,
@@ -38,6 +44,7 @@ class UserLocalRepository(
 ) {
     private val msgDao = db.messageDao()
     private val mAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val imageWorkerClient by lazy { ChatImageWorkerClient() }
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val networkObserver by lazy {
@@ -345,7 +352,13 @@ class UserLocalRepository(
             isRead = finalIsRead,
             isDelivered = finalIsDelivered,
             messageTime = originalTime,
-            firebaseTimestamp = originalFirebaseTimestamp
+            firebaseTimestamp = originalFirebaseTimestamp,
+            mediaJson = incoming.mediaJson ?: existing.mediaJson,
+            localImagePath = incoming.localImagePath ?: existing.localImagePath,
+            localImageMimeType = incoming.localImageMimeType ?: existing.localImageMimeType,
+            localImageSize = incoming.localImageSize ?: existing.localImageSize,
+            localImageWidth = incoming.localImageWidth ?: existing.localImageWidth,
+            localImageHeight = incoming.localImageHeight ?: existing.localImageHeight
         )
     }
 
@@ -501,6 +514,153 @@ class UserLocalRepository(
         attemptRemoteSend(pendingMessage, senderProfileImg, recipientProfileImg)
     }
 
+    /** Copies the picker URI into private storage, persists a stable message ID, then calls the Worker. */
+    suspend fun sendImageMessage(
+        context: Context,
+        recipientId: String,
+        recipientName: String,
+        senderName: String,
+        source: Uri
+    ): TextMessage {
+        val senderId = mAuth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
+        val messageId = createMessageId()
+        val attachment = withContext(Dispatchers.IO) {
+            ImageAttachmentStore.copyAndValidate(context.applicationContext, source)
+        }
+        val createdAt = System.currentTimeMillis()
+        val channelId = getChannelId(senderId, recipientId)
+        val pending = TextMessage(
+            id = messageId,
+            text = "",
+            senderId = senderId,
+            recipientId = recipientId,
+            senderName = senderName,
+            recipientName = recipientName,
+            date = java.util.Date(createdAt),
+            type = MessageType.IMAGE,
+            channelId = channelId,
+            status = MessageStatus.PENDING.name,
+            localImagePath = attachment.file.absolutePath,
+            localImageMimeType = attachment.mimeType,
+            localImageSize = attachment.fileSizeBytes,
+            localImageWidth = attachment.width,
+            localImageHeight = attachment.height
+        )
+        val queued = pending.toMessagesDTO(MessageStatus.PENDING).copy(
+            channelID = channelId,
+            firebaseTimestamp = createdAt,
+            localImagePath = attachment.file.absolutePath,
+            localImageMimeType = attachment.mimeType,
+            localImageSize = attachment.fileSizeBytes,
+            localImageWidth = attachment.width,
+            localImageHeight = attachment.height
+        )
+        try {
+            msgDao.insertMessage(queued)
+        } catch (error: Exception) {
+            attachment.file.delete()
+            throw error
+        }
+
+        if (!activeSyncingIds.add(messageId)) return queued.toTextMessage()
+        return try {
+            uploadAndStoreImage(queued)
+            msgDao.getMessageById(messageId)?.toTextMessage() ?: pending.copy(status = MessageStatus.SENT.name)
+        } catch (error: Exception) {
+            Log.e(TAG, "uploadAndStoreImage failed for $messageId: ${error.javaClass.simpleName}: ${error.message}", error)
+            markImageAttemptFailure(messageId, error)
+            if (isPermanentImageError(error)) throw error
+            Log.w(TAG, "Image $messageId queued for retry after a temporary upload failure: ${error.message}")
+            msgDao.getMessageById(messageId)?.toTextMessage() ?: pending
+        } finally {
+            activeSyncingIds.remove(messageId)
+        }
+    }
+
+    private suspend fun uploadAndStoreImage(message: MessagesDTO) {
+        val mimeType = message.localImageMimeType
+            ?: throw IllegalStateException("Queued image metadata is missing; select the image again.")
+        val size = message.localImageSize
+            ?: throw IllegalStateException("Queued image metadata is missing; select the image again.")
+        val width = message.localImageWidth
+            ?: throw IllegalStateException("Queued image metadata is missing; select the image again.")
+        val height = message.localImageHeight
+            ?: throw IllegalStateException("Queued image metadata is missing; select the image again.")
+        val file = message.localImagePath?.let(::File)
+        val result = imageWorkerClient.uploadAndFinalize(
+            recipientId = message.recipientId,
+            messageId = message.messageId,
+            file = file,
+            mimeType = mimeType,
+            fileSizeBytes = size,
+            width = width,
+            height = height
+        )
+        msgDao.insertMessage(
+            message.copy(
+                messageTime = result.createdAt.time,
+                firebaseTimestamp = result.createdAt.time,
+                status = MessageStatus.SENT,
+                retryCount = 0,
+                lastAttemptTime = System.currentTimeMillis(),
+                mediaJson = result.media.toJson(),
+                localImagePath = null,
+                localImageMimeType = null,
+                localImageSize = null,
+                localImageWidth = null,
+                localImageHeight = null
+            )
+        )
+        file?.delete()
+    }
+
+    private suspend fun markImageAttemptFailure(messageId: String, error: Exception) {
+        val current = msgDao.getMessageById(messageId) ?: return
+        val retryCount = current.retryCount + 1
+        val status = if (isPermanentImageError(error) || retryCount >= MAX_RETRY_LIMIT) {
+            MessageStatus.FAILED
+        } else {
+            MessageStatus.PENDING
+        }
+        msgDao.insertMessage(
+            current.copy(
+                status = status,
+                retryCount = retryCount,
+                lastAttemptTime = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun isPermanentImageError(error: Exception): Boolean = when (error) {
+        is WorkerRequestException -> error.isPermanent
+        is IllegalStateException, is IllegalArgumentException, is SecurityException -> true
+        is java.io.FileNotFoundException -> true
+        is IOException -> error.message?.contains("saved image file", ignoreCase = true) == true
+        else -> false
+    }
+
+    private suspend fun retryImageMessage(messageId: String) {
+        val existing = msgDao.getMessageById(messageId)
+            ?: throw IllegalStateException("The queued image is no longer available.")
+        if (existing.messageType != MessageType.IMAGE) return
+        if (!activeSyncingIds.add(messageId)) return
+        try {
+            val retry = existing.copy(
+                status = MessageStatus.PENDING,
+                retryCount = 0,
+                lastAttemptTime = 0
+            )
+            msgDao.insertMessage(retry)
+            uploadAndStoreImage(retry)
+        } catch (error: Exception) {
+            markImageAttemptFailure(messageId, error)
+            if (isPermanentImageError(error)) throw error
+            Log.w(TAG, "Image $messageId remains queued after retry")
+        } finally {
+            activeSyncingIds.remove(messageId)
+        }
+    }
+
     private fun attemptRemoteSend(
         message: TextMessage,
         senderProfileImg: String?,
@@ -509,6 +669,23 @@ class UserLocalRepository(
         val messageId = message.id
         if (!activeSyncingIds.add(messageId)) {
             Log.d(TAG, "Message $messageId is already being processed. Skipping concurrent attempt.")
+            return
+        }
+
+        if (message.type == MessageType.IMAGE) {
+            repositoryScope.launch {
+                try {
+                    val queuedImage = msgDao.getMessageById(messageId)
+                    if (queuedImage != null && queuedImage.messageType == MessageType.IMAGE) {
+                        uploadAndStoreImage(queuedImage)
+                    }
+                } catch (error: Exception) {
+                    Log.w(TAG, "Queued image $messageId could not be uploaded: ${error.message}", error)
+                    markImageAttemptFailure(messageId, error)
+                } finally {
+                    activeSyncingIds.remove(messageId)
+                }
+            }
             return
         }
 
@@ -616,6 +793,10 @@ class UserLocalRepository(
         senderProfileImg: String? = null,
         recipientProfileImg: String? = null
     ) {
+        if (message.type == MessageType.IMAGE) {
+            retryImageMessage(message.id)
+            return
+        }
         val messageToRetry = message.copy(
             status = MessageStatus.PENDING.name,
             retryCount = 0,

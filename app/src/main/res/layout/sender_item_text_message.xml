@@ -70,6 +70,31 @@
                     android:scaleType="centerInside"
                     android:visibility="visible"
                     tools:src="@drawable/ic_double_tick_seen" />
+
+                <TextView
+                    android:id="@+id/failed_message_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="@string/message_failed_to_send"
+                    android:textColor="@color/error"
+                    android:textSize="11sp"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/retry_message_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="6dp"
+                    android:backgroundTint="@color/btn_login"
+                    android:contentDescription="@string/retry_failed_message"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
+                    android:text="@string/retry_message"
+                    android:textAllCaps="false"
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 
